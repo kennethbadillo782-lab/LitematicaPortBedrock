@@ -78,11 +78,30 @@ jobs:
       - name: Test release packaging tools
         run: python -m unittest discover -s tools/oreui/tests
 
+      - name: Assemble complete player distribution
+        run: |
+          python tools/oreui/release_package.py --directory dist
+          python tools/oreui/release_package.py --check-directory dist
+
+      - name: Smoke-test Windows installer in a disposable instance
+        shell: pwsh
+        run: |
+          $instance = Join-Path $env:RUNNER_TEMP "LitematicaInstallSmoke"
+          $installed = Join-Path $instance "mods/LHolo"
+          $config = Join-Path $installed "config/config.json"
+          New-Item -ItemType Directory -Force (Split-Path $config) | Out-Null
+          Set-Content -Path $config -Value '{"keep":"private"}' -NoNewline
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PWD "dist/Instalar.ps1") -Instancia $instance
+          if ($LASTEXITCODE -ne 0) { throw "Installer failed" }
+          if (!(Test-Path (Join-Path $installed "LHolo.dll"))) { throw "Native mod not installed" }
+          if (!(Test-Path (Join-Path $installed "resource_packs/LHoloUI/hbui/lholo-menu.js"))) { throw "UI was not installed" }
+          if ((Get-Content $config -Raw) -ne '{"keep":"private"}') { throw "Existing user configuration was overwritten" }
+          $companion = Join-Path $instance "Minecraft Bedrock/Users/Shared/games/com.mojang/behavior_packs/Litematica_Realm_Companion_BP/scripts/main.js"
+          if (!(Test-Path $companion)) { throw "Optional Realm Companion was not installed" }
+
       - id: artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ github.event.repository.name }}-${{ steps.source.outputs.commit }}-client-windows-x64
           if-no-files-found: error
-          path: |
-            bin/
-            !bin/**/*.pdb
+          path: dist/

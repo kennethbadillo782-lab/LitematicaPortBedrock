@@ -22,7 +22,7 @@ xmake
 
 `lholo.oreui.package` 构建规则依赖原生 modpacker，`tools/oreui/package.lua` 提供前置资源生成和后置目录组装钩子；`build_menu.py` 管理版本适配与前端生成；`assemble_package.py` 管理安装文件清单、版本/UUID/协议标记校验和目录哈希。校验报告在 `build/oreui/package-validation.json`，不进入模组目录。该流水线始终重新生成页面，不使用旧的 build 页面作为成功回退。UUID 固定，版本来自原生 manifest 并与 tooth 校验；不会删除模组目录或覆盖配置。
 
-这是完整安装目录，也作为正式发行的唯一输入。构建机使用仓库内经过 SHA256 审核的目标版本依赖生成必需页面，安装者无需安装 Node、Python 或再次生成资源。GitHub 构建安装相同工具链，运行同一 `xmake` 并上传包含 `LHolo/resource_packs/LHoloUI` 的完整目录。
+这是完整安装目录，也作为正式发行的唯一输入。构建机使用仓库内经过 SHA256 审核的目标版本依赖生成必需页面，安装者无需安装 Node、Python 或再次生成资源。GitHub 构建安装相同工具链，运行同一 `xmake`，随后将六项已验证的客户端文件复制到独立 `dist/`，并加入 `Instalar.ps1`、`INSTALL.md` 双语指南、署名文件及 Realm Companion 可选行为包。只上传精确文件清单，避免混入配置、用户数据或 PDB。
 
 ## 已确认的加载约定
 
@@ -96,7 +96,7 @@ LHolo/
 1. 核对 `tooth.json.version`、xmake modVersion 与 `v<version>` 标签，确认发布文案。普通提交只触发构建，不自动创建 Release；在 GitHub 发布对应版本 Release 后开始自动发行。
 2. `.github/workflows/release.yml` 响应 `release.published`，调用同一份可复用 `build.yml`，按发行标签检出源码，配置 LLVM 22、LeviLamina client 和关闭 PDB 的 Release 构建。原生、前端、逻辑回归和打包工具测试全部成功后，上传 `LHolo-<实际检出 SHA>-client-windows-x64` artifact。
 3. 上传任务仅接收本次发行构建返回的 artifact ID 和源码 SHA。`tools/oreui/publish_release.py` 核对标签、源码、artifact 名称/所属 run 和 GitHub SHA256，下载原始 ZIP，不重新压缩或混入本机产物。
-4. `release_package.py` 校验六项安装文件、原生/资源包版本、UUID、最低引擎要求与 UI 协议。通过后自动将原始 ZIP 作为 `LHolo-client-windows-x64.zip` 附加到现有 Release，再核对远端附件 digest。`.zip.sha256` 只作校验输入，不上传；安装包不含配置、PDB 或本机文件。
+4. `release_package.py` 校验原有六项原生文件的构建摘要、原生/资源包版本、UUID、最低引擎要求与 UI 协议；并校验安装脚本、双语安装说明、署名/许可及 Realm Companion 完整文件清单。GitHub Actions 上传 `dist/` 的原始 ZIP；通过校验后自动以 `LHolo-client-windows-x64.zip` 附加到现有 Release，再核对远端附件 digest。`.zip.sha256` 只作校验输入，不上传；安装包不含配置、PDB 或本机文件。
 5. 不生成或覆盖更新日志、不移动已有标签。自动流程编译或校验失败时不会上传新包，具体错误见 Actions。Release 页面可能在构建期间尚无附件，须等待发行工作流成功后下载安装包。
 6. 需要对同一标签重新编译时，可在 Actions 手动运行发行工作流并填写 `tag`，例如 `gh workflow run release.yml -f tag=v26.60.0`。成功后替换该标签的同名附件，保留文案；同标签发行任务串行执行，防止重跑互相覆盖。
 
