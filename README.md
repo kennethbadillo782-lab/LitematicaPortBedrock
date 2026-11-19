@@ -4,9 +4,17 @@
 
 **Looking for Litematica on Bedrock?** This is a functional, community-developed **Litematica Bedrock port / Minecraft Bedrock schematic mod** for Windows — **not just a mockup or an untested concept**. The maintainer has used and tested the essential workflow inside Minecraft Bedrock: loading schematics, displaying projections, using the in-game interface, and writing structures. Java `.litematic` blueprints work directly in Bedrock. **The core mod works today on the documented supported version.** This is a Bedrock-native reimplementation of the Java Litematica experience, not the original Java mod running unchanged. The currently implemented core workflows operate inside Bedrock; additional features are being ported toward full 1:1 feature and behavior parity.
 
-[**Features**](#features) · [**Compatibility**](#compatibility-and-status) · [**Download & install**](#download-and-installation) · [**Build from source**](#build-from-source) · [**Español**](#español) · [**Credits**](#license-and-credits)
+[**Mission**](#why-this-project-exists) · [**Features**](#features) · [**Compatibility**](#compatibility-and-status) · [**Download & install**](#download-and-installation) · [**Build from source**](#build-from-source) · [**Español**](#español) · [**Credits**](#license-and-credits)
 
 > **Attribution:** Based on a **modified version** of [LHolo by MarmieQi](https://github.com/MarmieQi/LHolo) (GPL-3.0). This is not the original LHolo and is not affiliated with its author. See [ATTRIBUTION.md](ATTRIBUTION.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). LeviLamina is a separate dependency and is not distributed in this repository.
+
+## Why this project exists
+
+**I want this project to be a seed for the Minecraft Bedrock modding community.** My goal isn't just to make Litematica's Java Edition experience work on Bedrock for myself. I want to leave behind a useful, open foundation that other developers can study, modify, improve, fork and build upon — bringing new ideas and better tools to Bedrock players.
+
+**For now, this port targets Minecraft Bedrock on Windows PC.** I hope it helps more players enjoy the building tools and possibilities that Java players have had for years, while encouraging the community to continue improving the project long after my own contributions. **This is a starting point for others to build on, not the finish line.**
+
+If you want to help, see [CONTRIBUTING.md](CONTRIBUTING.md). Please preserve the original [LHolo attribution and licensing notices](ATTRIBUTION.md) when modifying or redistributing this work.
 
 ## Java Litematica experience, running natively on Bedrock
 
@@ -87,6 +95,14 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for the complete development and compatibil
 **Estado: funcional y en desarrollo activo.** **KeNnoTh ha probado personalmente el mod dentro de Minecraft Bedrock para Windows 1.26.60 y confirma que las funciones esenciales funcionan:** cargar esquemas, proyectar hologramas, utilizar el menú y las herramientas básicas de construcción y escritura. **No es una demostración sin probar ni un proyecto que solo compile.** **La meta es una equivalencia 1:1 en funciones y comportamiento con Litematica Java**; las funciones esenciales ya están operativas, aunque todavía quedan funciones avanzadas y ajustes por portar. Por eso, «port fiel» describe la intención y la implementación actual, mientras que «1:1 completo» sigue siendo una meta, no una afirmación de paridad total comprobada. No está diseñado para Android, iOS ni consolas. **Funcionar dentro del juego no significa que exista ya una descarga pública preparada:** consulta [Releases](../../releases).
 
 **Instalación:** requiere una versión compatible de Minecraft Bedrock para Windows y LeviLamina cliente. Cuando exista un paquete de release, habrá que extraerlo, cerrar Minecraft y ejecutar `Instalar.ps1` desde PowerShell. Mientras tanto, los desarrolladores pueden compilar desde el código fuente siguiendo los pasos anteriores.
+
+### ¿Por qué existe este proyecto?
+
+**Quiero dejar una semilla para la comunidad de Minecraft Bedrock.** Mi intención no es simplemente conseguir que Litematica de Java funcione en Bedrock para mí. Quiero que este proyecto sirva como una base abierta que otras personas puedan estudiar, modificar, mejorar y ampliar, para que entre todos podamos ofrecer una mejor experiencia a los jugadores de Bedrock.
+
+**Por ahora, esta versión está dirigida exclusivamente a Minecraft Bedrock en PC con Windows.** Mi deseo es que más jugadores tengan acceso a herramientas de construcción que antes asociaban con Java y que otros desarrolladores puedan continuar este trabajo, aportar sus propias ideas y llevarlo todavía más lejos. **No quiero que sea el final del camino, sino el comienzo de algo que la comunidad pueda seguir construyendo.**
+
+Si quieres contribuir, lee [CONTRIBUTING.md](CONTRIBUTING.md) y conserva los créditos y las condiciones de licencia de [LHolo y los demás proyectos originales](ATTRIBUTION.md).
 
 **Créditos:** basado en una versión modificada de [LHolo de MarmieQi](https://github.com/MarmieQi/LHolo), bajo GPL-3.0. No es el LHolo original ni está afiliado a su creador. Consulta [ATTRIBUTION.md](ATTRIBUTION.md).
 
