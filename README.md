@@ -47,16 +47,16 @@ This project is designed as a **faithful Java Litematica-to-Bedrock port**: the 
 
 ## Download and installation
 
-**No public GitHub Release was available when this README was updated (2026-11-19).** The source code is available here, but a prebuilt, ready-to-install package is not currently advertised as available.
+**A ready-to-install Windows package is now configured for GitHub Releases, but no public Release has been published yet (as of 2026-11-19).** Once a release is published and its build succeeds, its ZIP will include the compiled mod, the PowerShell installer, a bilingual installation guide, required attribution, and the optional Realm Companion. **The “Source code (zip)” download is not an installable mod.**
 
-- **[Check GitHub Releases](../../releases)** for future Windows packages.
+- **[Check GitHub Releases](../../releases)** for the ready-to-install `LHolo-client-windows-x64.zip` package once published. For step-by-step English/Spanish instructions, see the [Windows installation guide](docs/INSTALL_WINDOWS.md), which is also included as `INSTALL.md` inside the release ZIP.
 - **[Read the build instructions](#build-from-source)** if you want to compile from source.
 - **[Report an issue](../../issues)** if installation or compatibility fails.
 
-For a future packaged release, the existing installer workflow is:
+When an installable release ZIP is available, follow these steps:
 
 1. Install the matching Minecraft Bedrock for Windows and [LeviLamina client](https://github.com/LiteLDev/LeviLamina) (for example through LeviLauncher).
-2. Download and extract the matching Windows package from Releases, **once one is published**.
+2. Download and extract `LHolo-client-windows-x64.zip` from Releases, **once one is published**. The extracted folder contains `Instalar.ps1`, `INSTALL.md`, `LHolo/`, and `Litematica_Realm_Companion_BP/`.
 3. Close Minecraft, then run `Instalar.ps1` from the extracted release directory:
 
    ~~~powershell
@@ -94,7 +94,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for the complete development and compatibil
 
 **Estado: funcional y en desarrollo activo.** **KeNnoTh ha probado personalmente el mod dentro de Minecraft Bedrock para Windows 1.26.60 y confirma que las funciones esenciales funcionan:** cargar esquemas, proyectar hologramas, utilizar el menú y las herramientas básicas de construcción y escritura. **No es una demostración sin probar ni un proyecto que solo compile.** **La meta es una equivalencia 1:1 en funciones y comportamiento con Litematica Java**; las funciones esenciales ya están operativas, aunque todavía quedan funciones avanzadas y ajustes por portar. Por eso, «port fiel» describe la intención y la implementación actual, mientras que «1:1 completo» sigue siendo una meta, no una afirmación de paridad total comprobada. No está diseñado para Android, iOS ni consolas. **Funcionar dentro del juego no significa que exista ya una descarga pública preparada:** consulta [Releases](../../releases).
 
-**Instalación:** requiere una versión compatible de Minecraft Bedrock para Windows y LeviLamina cliente. Cuando exista un paquete de release, habrá que extraerlo, cerrar Minecraft y ejecutar `Instalar.ps1` desde PowerShell. Mientras tanto, los desarrolladores pueden compilar desde el código fuente siguiendo los pasos anteriores.
+**Instalación:** requiere Minecraft Bedrock compatible para Windows y LeviLamina cliente. El sistema de publicación ya prepara un ZIP con el mod compilado, `Instalar.ps1`, guía bilingüe y el Companion opcional; **todavía no se ha publicado una release pública**. Cuando exista, habrá que descargar el ZIP de [Releases](../../releases), extraerlo, cerrar Minecraft y ejecutar `Instalar.ps1` en PowerShell. **No se debe descargar “Source code (zip)” para instalar.** Consulta la [guía de instalación para Windows](docs/INSTALL_WINDOWS.md).
 
 ### ¿Por qué existe este proyecto?
 
