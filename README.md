@@ -1,8 +1,8 @@
 # Litematica for Minecraft Bedrock (Windows)
 
-**Litematica-style schematic building for Minecraft Bedrock Edition on Windows.** A native client mod for [LeviLamina](https://github.com/LiteLDev/LeviLamina) that loads Java Edition schematics, projects in-game holograms, and offers building, verification and structure placement tools.
+**A working Litematica-style mod for Minecraft Bedrock Edition on Windows, with core features tested in-game by the project maintainer.** This native [LeviLamina](https://github.com/LiteLDev/LeviLamina) client mod loads Java Edition schematics, projects holograms directly into Minecraft Bedrock, and provides building and structure placement tools.
 
-**Looking for Litematica on Bedrock?** This repository is a community-developed **Litematica Bedrock port / Minecraft Bedrock schematic mod** for Windows. It can read Java `.litematic` blueprints and use them in Bedrock without recreating the structure by hand. It is **not the official Java Edition Litematica mod**, and full feature parity with Java Litematica has **not** yet been achieved.
+**Looking for Litematica on Bedrock?** This is a functional, community-developed **Litematica Bedrock port / Minecraft Bedrock schematic mod** for Windows — **not just a mockup or an untested concept**. The maintainer has used and tested the essential workflow inside Minecraft Bedrock: loading schematics, displaying projections, using the in-game interface, and writing structures. Java `.litematic` blueprints work directly in Bedrock. **The core mod works today on the documented supported version.** This is not the official Java Edition Litematica mod; additional features are still being ported toward closer Java feature parity.
 
 [**Features**](#features) · [**Compatibility**](#compatibility-and-status) · [**Download & install**](#download-and-installation) · [**Build from source**](#build-from-source) · [**Español**](#español) · [**Credits**](#license-and-credits)
 
@@ -17,21 +17,21 @@
 - **World placement:** structure-block-based writing in supported single-player worlds and command-based placement where permissions allow it.
 - **Optional Realm Companion:** a Bedrock behavior pack that can queue server-side structure-writing jobs on compatible Realms or servers **when installed and used with operator permissions**. See [Realm Companion documentation](realm_companion/README.md).
 
-Not every option, keybinding, renderer behavior or workflow from Java Litematica is available. For implementation details and current limitations, see [DEVELOPMENT.md](DEVELOPMENT.md), [CHANGELOG.md](CHANGELOG.md), and [Configuration](docs/CONFIGURATION.md).
+**What is working vs. what is still being ported:** The core schematic workflow is functioning in-game according to hands-on testing by KeNnoTh. Some advanced Java Litematica settings, shortcuts, screens, and tools are still being integrated. Those remaining parity tasks **do not mean that schematic loading, projection, the menu, or basic building/placement are untested or unusable**. See [DEVELOPMENT.md](DEVELOPMENT.md), [CHANGELOG.md](CHANGELOG.md), and [Configuration](docs/CONFIGURATION.md) for implementation-level detail.
 
 ## Compatibility and status
 
 | Item | Current documented status |
 | --- | --- |
 | Platform | Minecraft Bedrock Edition **for Windows**; not a mobile, console, or general-purpose behavior-pack port |
-| Minecraft version | **1.26.60** tested manually by the author |
+| Minecraft version | **1.26.60** — tested in the running game by the maintainer |
 | Mod loader | LeviLamina **client 26.60.x** matching the game |
-| Native build | C++ / xmake / clang-cl; build and isolated tests documented as passing |
-| In-game projection, UI and single-player/Realm placement | Reported manually tested on 1.26.60 in the existing project documentation |
-| Java Litematica feature parity | **Partial / ongoing** — do not assume a complete 1:1 implementation |
+| Native build | C++ / xmake / clang-cl; builds and isolated tests pass; **core functionality has also been exercised in-game** |
+| In-game core features | **Working and hands-on tested by the maintainer:** schematic loading, hologram projection, OreUI menu, and essential building/structure-writing workflows on the supported Bedrock version |
+| Java Litematica feature parity | **Core functionality works; advanced parity work continues.** Not all Java Litematica features are implemented yet |
 | Remote paste | Requires the optional companion installed on the server/Realm and operator privileges; block/entity NBT support is limited |
 
-**Experimental software.** Minecraft or LeviLamina updates may break compatibility. Successful isolated tests are not the same as verification of every feature in a live game.
+**Project status: functional, actively developed.** This mod has been tested in an actual Minecraft Bedrock session by its maintainer; it is **not a code-only prototype**. Further development focuses on expanding Java Litematica feature parity and compatibility. New Minecraft/LeviLamina updates can require a matching mod build. Individual advanced features not explicitly listed as tested should not be assumed verified.
 
 ## Download and installation
 
@@ -80,7 +80,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for the complete development and compatibil
 
 **Funciones principales:** formatos `.litematic`, `.schematic`/`.schem`, `.nbt` y `.mcstructure`; conversión de bloques/estados Java → Bedrock; menú OreUI; vistas previas y gestión de proyectos; opciones de pegado en mundos propios y, con un complemento de servidor y permisos de operador, en Realms/servidores compatibles.
 
-**Estado:** desarrollo experimental. La documentación informa pruebas manuales en **Minecraft Bedrock para Windows 1.26.60**, pero la equivalencia funcional **1:1 con Litematica Java todavía es parcial**. No es un mod para Android, iOS o consolas. Por ahora **no hay una release pública**; visita [Releases](../../releases) para comprobar si se publica una descarga.
+**Estado: funcional y en desarrollo activo.** **KeNnoTh ha probado personalmente el mod dentro de Minecraft Bedrock para Windows 1.26.60 y confirma que las funciones esenciales funcionan:** cargar esquemas, proyectar hologramas, utilizar el menú y las herramientas básicas de construcción y escritura. **No es una demostración sin probar ni un proyecto que solo compile.** El objetivo es acercarse a la experiencia 1:1 de Litematica Java; todavía quedan funciones avanzadas y ajustes por portar. No está diseñado para Android, iOS ni consolas. **Funcionar dentro del juego no significa que exista ya una descarga pública preparada:** consulta [Releases](../../releases).
 
 **Instalación:** requiere una versión compatible de Minecraft Bedrock para Windows y LeviLamina cliente. Cuando exista un paquete de release, habrá que extraerlo, cerrar Minecraft y ejecutar `Instalar.ps1` desde PowerShell. Mientras tanto, los desarrolladores pueden compilar desde el código fuente siguiendo los pasos anteriores.
 
