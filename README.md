@@ -1,84 +1,97 @@
-# Litematica Port Bedrock
+# Litematica for Minecraft Bedrock (Windows)
 
-Port de **Litematica** (el mod de esquemas de Java) a **Minecraft Bedrock para Windows**, como mod nativo de cliente para
-[LeviLamina](https://github.com/LiteLDev/LeviLamina). Incluye un **Realm Companion** opcional (behavior pack) para pegar
-esquemas en Realms y servidores donde no puedes usar comandos ilimitados.
+**Litematica-style schematic building for Minecraft Bedrock Edition on Windows.** A native client mod for [LeviLamina](https://github.com/LiteLDev/LeviLamina) that loads Java Edition schematics, projects in-game holograms, and offers building, verification and structure placement tools.
 
-> **Basado en LHolo.** Este proyecto parte de una versión **modificada** de [LHolo](https://github.com/MarmieQi/LHolo)
-> de **MarmieQi** (GPL-3.0). No es el LHolo original ni está afiliado a su autor. LeviLamina no se incluye aquí.
-> Ver [ATTRIBUTION.md](ATTRIBUTION.md).
+**Looking for Litematica on Bedrock?** This repository is a community-developed **Litematica Bedrock port / Minecraft Bedrock schematic mod** for Windows. It can read Java `.litematic` blueprints and use them in Bedrock without recreating the structure by hand. It is **not the official Java Edition Litematica mod**, and full feature parity with Java Litematica has **not** yet been achieved.
 
-*English summary at the bottom.*
+[**Features**](#features) · [**Compatibility**](#compatibility-and-status) · [**Download & install**](#download-and-installation) · [**Build from source**](#build-from-source) · [**Español**](#español) · [**Credits**](#license-and-credits)
 
-## Qué hace
+> **Attribution:** Based on a **modified version** of [LHolo by MarmieQi](https://github.com/MarmieQi/LHolo) (GPL-3.0). This is not the original LHolo and is not affiliated with its author. See [ATTRIBUTION.md](ATTRIBUTION.md) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). LeviLamina is a separate dependency and is not distributed in this repository.
 
-- Carga esquemas `.litematic`, `.schematic`/`.schem`, `.nbt`, `.mcstructure` y proyecta un holograma en el mundo.
-- Convierte bloques y estados de Java a Bedrock (tabla basada en Chunker, ver `THIRD_PARTY_NOTICES.md`).
-- Menú propio (OreUI) con colocaciones, herramientas, tareas y opciones.
-- **Pegado por comandos** en mundos donde no tienes creativo directo (usa `setblock`/`fill` o el Companion).
-- **Realm Companion**: el servidor guarda una cola de trabajos, carga chunks con *ticking areas* y escribe los bloques por sí mismo,
-  así el cliente puede desconectarse del trabajo en cuanto el servidor lo recibe. Incluye además acciones de administración
-  usadas por el mod «Panel del Servidor» (hora, clima, dar objetos, tp…) y un menú de aldeanos.
+## Features
 
-## Estado real (léelo antes de usarlo)
+- **Java-to-Bedrock schematics:** load `.litematic`, `.schematic`, `.schem`, `.nbt` and Bedrock `.mcstructure` files.
+- **In-game hologram projection:** preview structures in the world and adjust placements; supported tools include rotation, mirroring, and layer-based building assistance.
+- **Building assistance:** block/state conversion, placement checks, material information, and projection HUD tools.
+- **Schematic management:** multiple files, task/placement controls, structure preview, and a dedicated OreUI interface.
+- **World placement:** structure-block-based writing in supported single-player worlds and command-based placement where permissions allow it.
+- **Optional Realm Companion:** a Bedrock behavior pack that can queue server-side structure-writing jobs on compatible Realms or servers **when installed and used with operator permissions**. See [Realm Companion documentation](realm_companion/README.md).
 
-| Parte | Estado |
-|---|---|
-| Compilación del mod (xmake + clang-cl) | Compila |
-| Tests lógicos (conversión Java→Bedrock, escritura), tests del frontend y del Companion | Pasan |
-| Uso en el juego (proyección, menú, pegado en mundo propio y en Realm) | Probado a mano por el autor en 1.26.60 |
-| Opciones y atajos de Litematica Java | **Parcial**: solo una parte está conectada |
-| Pegado en servidores ajenos | Solo con el Companion instalado y operador |
-| NBT de bloques / entidades en el pegado remoto | Limitado (ver `realm_companion/README.md`) |
+Not every option, keybinding, renderer behavior or workflow from Java Litematica is available. For implementation details and current limitations, see [DEVELOPMENT.md](DEVELOPMENT.md), [CHANGELOG.md](CHANGELOG.md), and [Configuration](docs/CONFIGURATION.md).
 
-Es un proyecto personal y puede romperse con actualizaciones del juego o de LeviLamina.
+## Compatibility and status
 
-## Requisitos
+| Item | Current documented status |
+| --- | --- |
+| Platform | Minecraft Bedrock Edition **for Windows**; not a mobile, console, or general-purpose behavior-pack port |
+| Minecraft version | **1.26.60** tested manually by the author |
+| Mod loader | LeviLamina **client 26.60.x** matching the game |
+| Native build | C++ / xmake / clang-cl; build and isolated tests documented as passing |
+| In-game projection, UI and single-player/Realm placement | Reported manually tested on 1.26.60 in the existing project documentation |
+| Java Litematica feature parity | **Partial / ongoing** — do not assume a complete 1:1 implementation |
+| Remote paste | Requires the optional companion installed on the server/Realm and operator privileges; block/entity NBT support is limited |
 
-- Minecraft Bedrock Edition para Windows **1.26.60** (la versión del mod debe coincidir con LeviLamina cliente `26.60.*`).
-- [LeviLamina cliente](https://github.com/LiteLDev/LeviLamina) instalado (por ejemplo con LeviLauncher).
+**Experimental software.** Minecraft or LeviLamina updates may break compatibility. Successful isolated tests are not the same as verification of every feature in a live game.
 
-## Instalar (usuarios)
+## Download and installation
 
-1. Descarga el `.zip` de la última *release* y descomprímelo.
-2. **Cierra Minecraft.**
-3. En PowerShell, dentro de la carpeta descomprimida:
-   ```powershell
+**No public GitHub Release was available when this README was updated (2026-11-19).** The source code is available here, but a prebuilt, ready-to-install package is not currently advertised as available.
+
+- **[Check GitHub Releases](../../releases)** for future Windows packages.
+- **[Read the build instructions](#build-from-source)** if you want to compile from source.
+- **[Report an issue](../../issues)** if installation or compatibility fails.
+
+For a future packaged release, the existing installer workflow is:
+
+1. Install the matching Minecraft Bedrock for Windows and [LeviLamina client](https://github.com/LiteLDev/LeviLamina) (for example through LeviLauncher).
+2. Download and extract the matching Windows package from Releases, **once one is published**.
+3. Close Minecraft, then run `Instalar.ps1` from the extracted release directory:
+
+   ~~~powershell
    powershell -ExecutionPolicy Bypass -File .\Instalar.ps1
-   ```
-   Detecta tus instancias de LeviLauncher; también puedes pasar `-Instancia "ruta"`. Hace copia de seguridad de lo que reemplaza.
-   Manual: copia la carpeta `LHolo` a `mods\` de tu instancia.
-4. Abre el juego y usa la tecla del menú (o escribe `LHolo` en el chat).
-5. Para Realms/servidores: instala el Companion, ver [realm_companion/README.md](realm_companion/README.md).
+   ~~~
 
-## Compilar (desarrolladores)
+4. Launch the game, then open the mod's OreUI menu. The installed native mod currently retains the name `LHolo` in several paths and commands.
+5. For Realms/servers, follow [Realm Companion setup](realm_companion/README.md) separately; merely installing the client does not grant server write access.
 
-Necesitas [xmake](https://xmake.io), Visual Studio Build Tools / clang-cl y Node.js 20+.
+The installer can locate LeviLauncher instances and backs up files it replaces. The manual package layout uses an `LHolo/` folder under the instance's `mods/` directory.
 
-```powershell
+## Build from source
+
+Windows developer prerequisites: [xmake](https://xmake.io/), Visual Studio Build Tools / clang-cl, and Node.js 20+.
+
+~~~powershell
 xmake f -c -y -m release -p windows -a x64 --toolchain=clang-cl
 xmake -b LHolo
-xmake -b LHoloLogicTests ; xmake run LHoloLogicTests
-npm --prefix frontend ci ; npm --prefix frontend test
+xmake -b LHoloLogicTests
+xmake run LHoloLogicTests
+npm --prefix frontend ci
+npm --prefix frontend test
 node --experimental-vm-modules realm_companion/test.cjs
-```
+~~~
 
-Más detalles en [DEVELOPMENT.md](DEVELOPMENT.md) y [CONTRIBUTING.md](CONTRIBUTING.md). Documentación original de LHolo en
-`docs/upstream/`.
+See [DEVELOPMENT.md](DEVELOPMENT.md) for the complete development and compatibility workflow, and [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
 
-## Licencia y créditos
+## Español
 
-**GPL-3.0** (ver [LICENSE](LICENSE)) **más una condición de atribución**: si modificas, mejoras o redistribuyes este
-proyecto, debes dar crédito a este repositorio y a **LHolo de MarmieQi**, conservar los avisos y decir qué cambiaste.
-Texto completo en [ATTRIBUTION.md](ATTRIBUTION.md). Terceros en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+### Litematica para Minecraft Bedrock (Windows)
 
----
+¿Buscas **Litematica para Bedrock**? Este proyecto adapta herramientas de esquemas estilo Litematica a **Minecraft Bedrock Edition para Windows** mediante un mod nativo de **LeviLamina**. Permite cargar construcciones de Java (incluidos archivos `.litematic`), proyectar hologramas dentro del juego, consultar materiales y usar herramientas de colocación y escritura de estructuras.
 
-## English summary
+**Funciones principales:** formatos `.litematic`, `.schematic`/`.schem`, `.nbt` y `.mcstructure`; conversión de bloques/estados Java → Bedrock; menú OreUI; vistas previas y gestión de proyectos; opciones de pegado en mundos propios y, con un complemento de servidor y permisos de operador, en Realms/servidores compatibles.
 
-Litematica-style schematic projection and pasting for **Minecraft Bedrock (Windows)**, a native LeviLamina client mod,
-with an optional server-side **Realm Companion** behavior pack. **Based on a modified LHolo by MarmieQi (GPL-3.0)**; not
-affiliated with the original author; LeviLamina is not included. Install: unzip the release, close Minecraft, run
-`Instalar.ps1` (or copy `LHolo/` into your instance's `mods/`). Build commands are above. Licensed GPL-3.0 with an attribution
-requirement (see `ATTRIBUTION.md`): if you modify or improve it, credit this project and LHolo. Experimental, partially
-implemented, tested by hand on 1.26.60 only.
+**Estado:** desarrollo experimental. La documentación informa pruebas manuales en **Minecraft Bedrock para Windows 1.26.60**, pero la equivalencia funcional **1:1 con Litematica Java todavía es parcial**. No es un mod para Android, iOS o consolas. Por ahora **no hay una release pública**; visita [Releases](../../releases) para comprobar si se publica una descarga.
+
+**Instalación:** requiere una versión compatible de Minecraft Bedrock para Windows y LeviLamina cliente. Cuando exista un paquete de release, habrá que extraerlo, cerrar Minecraft y ejecutar `Instalar.ps1` desde PowerShell. Mientras tanto, los desarrolladores pueden compilar desde el código fuente siguiendo los pasos anteriores.
+
+**Créditos:** basado en una versión modificada de [LHolo de MarmieQi](https://github.com/MarmieQi/LHolo), bajo GPL-3.0. No es el LHolo original ni está afiliado a su creador. Consulta [ATTRIBUTION.md](ATTRIBUTION.md).
+
+## License and credits
+
+- **License:** [GPL-3.0](LICENSE); see the project's [attribution terms and contributor credits](ATTRIBUTION.md).
+- **Upstream foundation:** [LHolo — MarmieQi](https://github.com/MarmieQi/LHolo).
+- **Loader (external):** [LeviLamina — LiteLDev](https://github.com/LiteLDev/LeviLamina).
+- **Java behavior and schematic-format reference (not copied Java source):** [Litematica — maruohon](https://github.com/maruohon/litematica).
+- **Mapping data:** [Chunker — HiveGamesOSS](https://github.com/HiveGamesOSS/Chunker), see [third-party notices](THIRD_PARTY_NOTICES.md).
+
+This repository is a community project, not an official Minecraft, Mojang, Microsoft, LeviLamina or Litematica release.
