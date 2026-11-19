@@ -78,11 +78,14 @@ jobs:
       - name: Test release packaging tools
         run: python -m unittest discover -s tools/oreui/tests
 
+      - name: Assemble complete player distribution
+        run: |
+          python tools/oreui/release_package.py --directory dist
+          python tools/oreui/release_package.py --check-directory dist
+
       - id: artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ github.event.repository.name }}-${{ steps.source.outputs.commit }}-client-windows-x64
           if-no-files-found: error
-          path: |
-            bin/
-            !bin/**/*.pdb
+          path: dist/
