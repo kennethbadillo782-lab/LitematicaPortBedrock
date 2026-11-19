@@ -1,0 +1,9 @@
+{
+  "name": "${modName}",
+  "entry": "${modFile}",
+  "version": "${modVersion}",
+  "type": "native",
+  "platform": "${modPlatform}",
+  "description": "Litematica for Minecraft Bedrock (client mod, LeviLamina). Based on a modified LHolo by MarmieQi.",
+  "author": "Litematica Port Bedrock contributors (based on LHolo by MarmieQi/Cat66)"
+}

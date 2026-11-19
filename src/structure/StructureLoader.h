@@ -1,0 +1,143 @@
+// LHolo - Client-side projection renderer for Minecraft Bedrock Windows
+// Copyright (C) 2026  MarmieQi
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#pragma once
+
+#include "i18n/Message.h"
+#include "structure/LayerDisplayTypes.h"
+#include "structure/StructureBlocks.h"
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
+class Block;
+class CompoundTag;
+
+namespace lholo::structure {
+struct IndependentTaskFiles;
+
+inline constexpr std::uint64_t kProjectionLifecycleHintDurationMs = 2500;
+
+struct LoadedStructure {
+    struct RegionBox {
+        int x{};
+        int y{};
+        int z{};
+        int sizeX{};
+        int sizeY{};
+        int sizeZ{};
+        int sourceIndex{-1};
+        std::string name;
+    };
+
+    std::filesystem::path                 sourcePath;
+    std::string                           name, author, description;
+    std::shared_ptr<std::string const>     sourceArchive;
+    int                                  sizeX{};
+    int                                  sizeY{};
+    int                                  sizeZ{};
+    std::uint64_t                        volume{};
+    std::uint64_t                        primaryBlocks{};
+    std::uint64_t                        secondaryBlocks{};
+    std::uint64_t                        paletteEntries{};
+    // Used source cells that could not be converted; never schematic air.
+    std::uint64_t                        unmappedBlocks{};
+    std::uint64_t                        generation{};
+    std::size_t                          materialCount{};
+    bool                                 composed{};
+    bool                                 hasAirCells{};
+    std::shared_ptr<IndependentTaskFiles const> independentFiles;
+    std::vector<std::string>              sourceFiles;
+    // Cells covered by the source format. mcstructure contributes one box;
+    // litematic contributes one per region so gaps between regions are not
+    // mistaken for schematic air by projection correction.
+    std::vector<RegionBox>               regions;
+    // Sorted linear indices for source format -1 cells, excluded from air correction and world writing.
+    std::vector<std::uint64_t>            omittedCells;
+    // Original template origin, used by vanilla when relocating block-entity references.
+    std::array<int, 3>                    sourceWorldOrigin{};
+    using RenderBlock = StructureBlock;
+    StructureBlocks                      renderBlocks;
+
+    bool hasProjectionContent() const { return composed || hasAirCells || !renderBlocks.empty(); }
+
+    bool isOmittedCell(int x, int y, int z) const {
+        auto const index = (static_cast<std::uint64_t>(x) * sizeY + y) * sizeZ + z;
+        return std::binary_search(omittedCells.begin(), omittedCells.end(), index);
+    }
+};
+
+bool shouldShowProjectedBlockName();
+bool handleGuiHotkeyKeyDown(unsigned int virtualKey);
+bool handleGuiHotkeyKeyUp(unsigned int virtualKey);
+bool handleProjectionOffsetWheel(short wheelDelta);
+void resetHotkeyState();
+// Present-frame control plane for deferred world-lifecycle and hotkey actions.
+void processPendingActions();
+// Invalidates world-derived HUD snapshots after a dimension change while
+// preserving the loaded structure and all HUD preferences.
+void resetDimensionSession();
+// Clears transient projection, UI and input state owned by the current world
+// while preserving user configuration such as HUD layout and hotkeys.
+void resetWorldSession();
+// JE-style transient hint shown centered above the hotbar for a moment (e.g.
+// when manual mode blocks an action, or a placement hotkey is toggled). The
+// hint is stored as a message so it follows a language switch while pending.
+void showActionHint(i18n::Message message, std::uint64_t durationMs = 1600);
+// True while a hint is still on screen, so the overlay keeps drawing even with
+// no projection loaded and the menu closed.
+// One-time consent for the experimental assisted-placement features (they may be
+// flagged as cheating by server anti-cheat). Persisted once acknowledged.
+bool experimentalConsentGiven();
+void setExperimentalConsentGiven(bool given);
+// Opt-in on-screen material-progress HUD, configured on the HUD settings page
+// (default off). Independent of the main projection HUD toggle.
+bool materialHudEnabled();
+void setMaterialHudEnabled(bool enabled);
+// Material HUD corner: 0 top-left, 1 bottom-left, 2 top-right, 3 bottom-right
+// (same encoding as the projection HUD position). Default 3.
+int  materialHudPosition();
+void setMaterialHudPosition(int position);
+void requestMaterialList();
+void loadSettings();
+void saveSettings();
+std::shared_ptr<LoadedStructure const> getLoaded();
+int getRotationQuarterTurns();
+int getMirrorMode();
+int getOffsetX();
+int getOffsetY();
+int getOffsetZ();
+LayerDisplayMode getLayerDisplayMode();
+int getDisplayLayer();
+LayerAxis getLayerAxis();
+void recordProjectionAnchor(int x, int y, int z);
+// True when the Bedrock mouse-input boundary should give the wheel to projection
+// movement: a projection is loaded and the fixed Alt trigger is held.
+bool scrollLockActive();
+void clear();
+// Asynchronously reload the last saved projection at its saved anchor/transform. Standalone so
+// both the menu action and the load hotkey can trigger it.
+// Status line for a freshly loaded structure. File names and dimensions are
+// language-neutral fragments; the table entry supplies the wording.
+i18n::Message makeLoadedStatusMessage(LoadedStructure const& loaded);
+
+} // namespace lholo::structure

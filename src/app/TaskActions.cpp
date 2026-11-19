@@ -1,0 +1,541 @@
+#include "app/JavaConfigActions.h"
+#include "app/TaskActions.h"
+#include "app/ToolActions.h"
+#include "app/VerifierActions.h"
+#include "app/TaskContext.h"
+#include "tasks/TaskStore.h"
+#include "tasks/TaskStoreWriter.h"
+#include "structure/StructureFileLoader.h"
+#include "structure/StructureSession.h"
+#include "structure/StructureUiState.h"
+#include "structure/MaterialTracker.h"
+#include "structure/StructurePaths.h"
+#include "structure/capture/StructureCapture.h"
+#include "structure/formats/EditableLitematic.h"
+#include <Windows.h>
+#include <algorithm>
+#include <deque>
+#include <mutex>
+#include <exception>
+#include <future>
+#include <fstream>
+#include <chrono>
+
+namespace lholo::app {
+namespace {
+std::mutex mutex;
+TaskSnapshot state;
+std::deque<TaskIntent> pending;
+std::optional<int> viewDimension;
+std::uint64_t observedWorldRevision{};
+std::uint64_t activeGeneration{};
+bool dirty{}, loading{};
+std::optional<tasks::Task> activeDefinition, pendingDefinition;
+bool reloadFiles{};
+bool schematicLoading{};
+std::string schematicPath;
+bool createAfterLoad{};
+std::future<std::string> sourceSave;
+std::string storageError;
+std::unique_ptr<tasks::TaskStoreWriter> writer;
+auto& session() {
+    return structure::detail::StructureSession::getInstance();
+}
+void save() {
+    writer->queue(state.catalog);
+}
+structure::detail::StructureTransformSnapshot transform(tasks::File const& f) {
+    return {f.rotation / 90,
+            f.mirror == "x" ? 1 : f.mirror == "z" ? 2 : 0,
+            f.x,
+            f.y,
+            f.z,
+            f.slice.mode,
+            f.slice.layer,
+            f.slice.axis};
+}
+void selectEditor(tasks::Task& task, bool notifyDimension = false) {
+    if (!activeDefinition) return;
+    auto& ui = structure::detail::StructureUiState::getInstance();
+    ui.clearActionHint(i18n::TextKey::ActionHintSelectedFileOtherDimension);
+    structure::detail::invalidateMaterialList();
+    activeDefinition->selectedFileId = task.selectedFileId;
+    auto* file = tasks::findFile(*activeDefinition, task.selectedFileId);
+    auto player=detail::taskPlayerOrigin();
+    if (!file) {
+        session().selectCompositionFile({}, {}, -2, {});
+        return;
+    }
+    if (!player || file->dimension!=player->dimensionId) {
+        session().selectCompositionFile({}, transform(*file), -2, file->path);
+        if (notifyDimension && player && file->dimension && player->dimensionId
+            && file->dimension != player->dimensionId) {
+            ui.setActionHint(
+                i18n::Message{i18n::TextKey::ActionHintSelectedFileOtherDimension}, GetTickCount64() + 3000, true);
+        }
+        return;
+    }
+    auto loaded = structure::detail::cachedTaskFile(file->path);
+    auto projection = session().loaded();
+    auto index = projection ? static_cast<int>(std::find(projection->sourceFiles.begin(),
+                                                         projection->sourceFiles.end(), file->id) -
+                                               projection->sourceFiles.begin())
+                            : -2;
+    if (projection && index == static_cast<int>(projection->sourceFiles.size()))
+        index = -2;
+    session().selectCompositionFile(loaded, transform(*file), index, file->path);
+}
+void clearRuntime() {
+    state.activeTaskId.clear();
+    viewDimension.reset();
+    activeGeneration = 0;
+    dirty = false;
+    activeDefinition.reset();
+    pendingDefinition.reset();
+    reloadFiles = false;
+}
+bool activate(tasks::Task const* task) {
+    auto origin = detail::taskPlayerOrigin();
+    if (!task || !origin || !origin->dimensionId)
+        return false;
+    viewDimension=origin->dimensionId;
+    pendingDefinition = *task;
+    dirty = true;
+    reloadFiles = true;
+    return true;
+}
+bool createPlacement(std::string const& path) {
+    if (!detail::taskPlayerOrigin()) return false;
+    auto* task = tasks::findTask(state.catalog, state.catalog.selectedTaskId);
+    if (!task) {
+        tasks::Task created{tasks::newId(), "Schematic placements", {}, {}};
+        state.catalog.selectedTaskId = created.id;
+        state.catalog.tasks.push_back(std::move(created));
+        task = &state.catalog.tasks.back();
+    }
+    tasks::File file{tasks::newId(), path};
+    if (auto origin = detail::taskPlayerOrigin()) {
+        file.x = origin->x; file.y = origin->y; file.z = origin->z;
+        file.dimension = origin->dimensionId;
+    }
+    task->selectedFileId = file.id;
+    task->files.push_back(std::move(file));
+    return activate(task);
+}
+bool mutate(TaskIntent const& i) {
+    if(i.action==TaskAction::JavaConfigCommand)return queueJavaConfigCommand(i.fileId,i.value);
+    if(i.action==TaskAction::VerifierCommand)return queueVerifierCommand(i.fileId,i.value);
+    if(i.action==TaskAction::ToolCommand)return queueToolCommand(i.fileId,i.value);
+    if(i.action==TaskAction::SaveSchematic) {
+        if(sourceSave.valid()||i.value.empty())return false;
+        auto found=std::find_if(state.schematics.begin(),state.schematics.end(),[&](auto const& source){return source.id==i.fileId;});
+        if(found==state.schematics.end())return false;
+        auto loaded=structure::detail::memorySchematic(found->path);
+        if(!loaded||!loaded->sourceArchive)return false;
+        auto destination=structure::detail::pathFromUtf8(i.value);
+        if(destination.extension()!=loaded->sourcePath.extension())return false;
+        sourceSave=std::async(std::launch::async,[bytes=loaded->sourceArchive,destination]()->std::string {
+            try {auto temporary=destination;temporary+=L".tmp";
+                {std::ofstream out(temporary,std::ios::binary|std::ios::trunc);out.exceptions(std::ios::badbit|std::ios::failbit);out.write(bytes->data(),static_cast<std::streamsize>(bytes->size()));out.close();}
+                if(!MoveFileExW(temporary.c_str(),destination.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))return "Could not save schematic";
+                return {};
+            }catch(std::exception const& error){return error.what();}
+        });return true;
+    }
+    if (i.action == TaskAction::LoadSchematic) {
+        if (schematicLoading || i.value.empty() || !detail::taskPlayerOrigin()) return false;
+        if (!structure::detail::startSchematicRead(i.id, i.value)) return false;
+        schematicPath = i.value;
+        createAfterLoad = i.delta != 0;
+        schematicLoading = true;
+        return true;
+    }
+    if (i.action == TaskAction::CreatePlacement) {
+        auto source = std::find_if(state.schematics.begin(), state.schematics.end(),
+            [&](auto const& s) { return s.id == i.fileId; });
+        if(source==state.schematics.end()||!createPlacement(source->path))return false;
+        if(auto* task=tasks::findTask(state.catalog,state.catalog.selectedTaskId))task->files.back().name=source->name;
+        if(pendingDefinition)pendingDefinition->files.back().name=source->name;
+        return true;
+    }
+    if (i.action == TaskAction::UnloadSchematic) {
+        auto source = std::find_if(state.schematics.begin(), state.schematics.end(),
+            [&](auto const& s) { return s.id == i.fileId; });
+        if (source == state.schematics.end()) return false;
+        auto path = source->path;
+        structure::detail::unloadSchematic(path);
+        state.schematics.erase(source);
+        for (auto& entry : state.catalog.tasks) {
+            std::erase_if(entry.files, [&](auto const& f) { return f.path == path; });
+            if (!tasks::findFile(entry, entry.selectedFileId))
+                entry.selectedFileId = entry.files.empty() ? "" : entry.files.front().id;
+            if (entry.id == state.activeTaskId) { pendingDefinition = entry; dirty = true; }
+        }
+        return true;
+    }
+
+    auto* task = tasks::findTask(state.catalog, i.taskId);
+    if (i.action == TaskAction::Activate)
+        return activate(task);
+    if (i.action == TaskAction::Close) {
+        session().cancelPendingLoad();
+        structure::clear();
+        clearRuntime();
+        return true;
+    }
+    if (!tasks::applyCatalogEdit(state.catalog, i))
+        return false;
+    if (i.action == TaskAction::AddFile) {
+        // Fix placement when the file enters the catalog, independently of
+        // whether this task is active or the loader can currently start.
+        if (auto origin = detail::taskPlayerOrigin()) {
+            auto& file = task->files.back();
+            file.x = origin->x;
+            file.y = origin->y;
+            file.z = origin->z;
+            file.dimension = origin->dimensionId;
+        }
+    }
+    if (i.action == TaskAction::Create || i.action == TaskAction::Select) {
+        auto* selected = tasks::findTask(state.catalog, state.catalog.selectedTaskId);
+        if (detail::taskPlayerOrigin())
+            activate(selected);
+        return true;
+    }
+    if (i.action == TaskAction::Delete && i.taskId == state.activeTaskId) {
+        structure::clear();
+        clearRuntime();
+        return true;
+    }
+    task = tasks::findTask(state.catalog, i.taskId);
+    if (task && task->id == state.activeTaskId) {
+        if (i.action == TaskAction::SelectFile)
+            selectEditor(*task, true);
+        else if (i.action != TaskAction::Rename && i.action != TaskAction::Select) {
+            pendingDefinition = *task;
+            dirty = true;
+        }
+    }
+    return true;
+}
+} // namespace
+void loadTasks() {
+    std::lock_guard lock(mutex);
+    observedWorldRevision = detail::taskWorldRevision();
+    state.writable = false;
+    state.schematics.clear();
+    schematicLoading = false;
+    try {
+        auto path = detail::taskStorePath();
+        state.catalog = tasks::readCatalog(path);
+        tasks::migrateToPlacementManager(state.catalog);
+        writer = std::make_unique<tasks::TaskStoreWriter>(std::move(path));
+        state.error.clear();
+        state.writable = true;
+        save();
+    } catch (std::exception const& e) {
+        state.error = e.what();
+    }
+    ++state.revision;
+}
+bool submitTaskIntent(TaskIntent i) {
+    std::lock_guard lock(mutex);
+    if (!i.id || i.id <= state.ack || !pending.empty())
+        return false;
+    pending.push_back(std::move(i));
+    return true;
+}
+TaskSnapshot getTaskSnapshot() {
+    std::lock_guard lock(mutex);
+    auto copy = state;
+    if (!storageError.empty()) {
+        copy.error = storageError;
+        copy.errorFileId.clear();
+    }
+    copy.loading = sourceSave.valid() || schematicLoading || loading || dirty || !pending.empty() || structure::detail::isStructureFileLoading();
+    copy.worldAvailable = detail::taskPlayerOrigin().has_value();
+    return copy;
+}
+TaskStatus getTaskStatus() {
+    std::lock_guard lock(mutex);
+    auto status = static_cast<TaskStatus const&>(state);
+    if (!storageError.empty()) {
+        status.error = storageError;
+        status.errorFileId.clear();
+    }
+    status.loading = sourceSave.valid() || schematicLoading || loading || dirty || !pending.empty() || structure::detail::isStructureFileLoading();
+    status.worldAvailable = detail::taskPlayerOrigin().has_value();
+    return status;
+}
+void shutdownTasks() {
+    std::lock_guard lock(mutex);
+    pending.clear();
+    if(sourceSave.valid())sourceSave.get();
+    if (writer) {
+        writer->finish();
+        if (auto result = writer->takeResult()) storageError = std::move(*result);
+        writer.reset();
+    }
+    loading = false;
+    state.writable = false;
+    clearRuntime();
+}
+void processTaskActions() {
+    std::lock_guard lock(mutex);
+    if (auto const world = detail::taskWorldRevision(); world != observedWorldRevision) {
+        clearRuntime();
+        state.schematics.clear();
+        schematicLoading = false;
+        observedWorldRevision = world;
+    }
+    if (auto result = structure::detail::takeSchematicReadResult()) {
+        schematicLoading = false;
+        if (result->loaded && result->worldRevision == observedWorldRevision) {
+            auto const& loaded = *result->loaded;
+            auto existing = std::find_if(state.schematics.begin(), state.schematics.end(),
+                [&](auto const& source) { return source.path == schematicPath; });
+            LoadedSchematic source{existing == state.schematics.end() ? tasks::newId() : existing->id,
+                schematicPath, loaded.name.empty() ? structure::detail::pathToUtf8(loaded.sourcePath.stem()) : loaded.name,
+                loaded.sizeX, loaded.sizeY, loaded.sizeZ};
+            if (existing == state.schematics.end()) state.schematics.push_back(std::move(source));
+            else *existing = std::move(source);
+            if (auto* active = tasks::findTask(state.catalog, state.activeTaskId); active &&
+                std::any_of(active->files.begin(), active->files.end(), [&](auto const& f) { return f.path == schematicPath; })) {
+                pendingDefinition = *active; dirty = true; reloadFiles = false;
+            }
+            state.error.clear();
+            if (createAfterLoad) { createPlacement(schematicPath); save(); }
+        } else state.error = result->error.empty() ? "Could not load schematic" : result->error;
+        ++state.revision;
+    }
+    if (!schematicLoading && detail::taskPlayerOrigin()) {
+        // A schematic exported from an area selection joins the loaded schematics by itself, like Litematica's save.
+        static std::uint64_t autoLoadId = 1ULL << 52;
+        if (auto exported = structure::capture::takeExportedPath()) {
+            auto path = structure::detail::pathToUtf8(*exported);
+            if (structure::detail::startSchematicRead(++autoLoadId, path)) {
+                schematicPath = path;
+                createAfterLoad = false;
+                schematicLoading = true;
+            }
+        }
+    }
+    if(sourceSave.valid()&&sourceSave.wait_for(std::chrono::seconds{0})==std::future_status::ready){state.error=sourceSave.get();++state.revision;}
+    auto current = session().loaded();
+    if (writer)
+        if (auto result = writer->takeResult()) storageError = std::move(*result);
+    if (!current && !detail::taskPlayerOrigin())
+        clearRuntime();
+    if (!state.activeTaskId.empty() &&
+        (!current || !current->composed || current->generation != activeGeneration))
+        clearRuntime();
+    if (auto result = structure::detail::takeTaskCompositionResult()) {
+        loading = false;
+        if (result->revision == state.revision && pendingDefinition && result->taskId == pendingDefinition->id) {
+            if (!result->error.empty()) {
+                state.error = result->error;
+                state.errorFileId = result->errorFileId;
+                session().failFileLoad(result->request,
+                                       i18n::Message{i18n::TextKey::StatusLoadFailed, {result->error}});
+                // Keep the last requested view dimension after a failed
+                // dimension switch; do not retry the same failed load each frame.
+                if (auto* task = tasks::findTask(state.catalog, state.activeTaskId))
+                    selectEditor(*task);
+            } else if (viewDimension) {
+                // Loaded, but some placements were skipped (e.g. their file was deleted): say which, without failing.
+                state.error = result->warning;
+                state.errorFileId = result->warningFileId;
+                auto const& position=result->composition.origin;
+                auto origin=structure::detail::StructureLoadOrigin{position[0],position[1],position[2],viewDimension};
+                auto generation = result->composition.loaded->generation;
+                if (session().completeCompositionLoad(result->request, std::move(result->composition.loaded),
+                                                      origin)) {
+                    state.activeTaskId = result->taskId;
+                    activeGeneration = generation;
+                    activeDefinition = std::move(pendingDefinition);
+                    auto* task = tasks::findTask(state.catalog, state.activeTaskId);
+                    bool preferencesChanged{};
+                    if (task) for (auto const& placed:activeDefinition->files) {
+                        auto* saved=tasks::findFile(*task,placed.id);
+                        if (saved && !saved->dimension && placed.dimension) {
+                            saved->dimension=placed.dimension;
+                            saved->x=placed.x; saved->y=placed.y; saved->z=placed.z;
+                            preferencesChanged=true;
+                        }
+                    }
+                    // The accepted composition already used these corrected
+                    // slices. Publish the same values to the editor and store;
+                    // failed or stale loads never reach this point.
+                    for (auto const& resolved : result->files) {
+                        if (!resolved.loaded) continue;
+                        auto* active = tasks::findFile(*activeDefinition, resolved.id);
+                        if (!active) continue;
+                        active->slice = resolved.slice;
+                        auto* saved = task ? tasks::findFile(*task, resolved.id) : nullptr;
+                        if (saved && saved->slice != resolved.slice) {
+                            saved->slice = resolved.slice;
+                            preferencesChanged = true;
+                        }
+                    }
+                    if (preferencesChanged) save();
+                    if (task && task->files == activeDefinition->files) {
+                        state.error.clear();
+                        state.errorFileId.clear();
+                    }
+                    if (task)
+                        selectEditor(*task);
+                    structure::detail::invalidateMaterialList();
+                }
+            }
+        }
+        pendingDefinition.reset();
+    } else if (loading && !structure::detail::isStructureFileLoading())
+        loading = false;
+    // Refresh the task view on a dimension change, without changing any file's
+    // persisted placement. Files in other dimensions are filtered below.
+    auto player=detail::taskPlayerOrigin();
+    if (!loading && !dirty && activeDefinition && player && viewDimension
+        && player->dimensionId!=viewDimension) {
+        if (auto* task=tasks::findTask(state.catalog,state.activeTaskId)) {
+            pendingDefinition=*task;
+            viewDimension=player->dimensionId;
+            dirty=true;
+            reloadFiles=false;
+            ++state.revision;
+        }
+    }
+    // Existing editors/hotkeys own their live tuple. Persist absolute XYZ.
+    if (!loading && !dirty && activeDefinition) {
+        auto* task = tasks::findTask(state.catalog, state.activeTaskId);
+        auto* file = tasks::findFile(*activeDefinition, activeDefinition->selectedFileId);
+        if (file && player && file->dimension==player->dimensionId && session().selectedSource() >= 0) {
+            auto t = session().transform();
+            bool changed = file->x != t.offsetX || file->y != t.offsetY || file->z != t.offsetZ ||
+                file->rotation != t.rotation * 90 ||
+                file->mirror != (t.mirror == 1 ? "x" : t.mirror == 2 ? "z" : "none") ||
+                file->slice != structure::LayerSettings{t.layerAxis, t.layerDisplayMode, t.displayLayer};
+            if (changed) {
+                pendingDefinition = *activeDefinition;
+                file = tasks::findFile(*pendingDefinition, file->id);
+                file->x = t.offsetX;
+                file->y = t.offsetY;
+                file->z = t.offsetZ;
+                file->rotation = t.rotation * 90;
+                file->mirror = t.mirror == 1 ? "x" : t.mirror == 2 ? "z" : "none";
+                file->slice = {t.layerAxis, t.layerDisplayMode, t.displayLayer};
+                if (auto* saved = task ? tasks::findFile(*task, file->id) : nullptr) {
+                    saved->x = file->x; saved->y = file->y; saved->z = file->z;
+                    saved->rotation = file->rotation; saved->mirror = file->mirror; saved->slice = file->slice;
+                }
+                ++state.revision;
+                dirty = true;
+                save();
+            }
+        }
+    }
+    if (!pending.empty()) {
+        auto i = std::move(pending.front());
+        pending.pop_front();
+        state.ack = i.id;
+        state.accepted = false;
+        if (i.action == TaskAction::Acknowledge) {
+            state.accepted = true;
+            if (!i.value.empty()) {
+                state.error = i.value;
+                state.errorFileId = i.fileId;
+            }
+        } else if (state.writable && i.revision == state.revision &&
+                   (!loading || i.action == TaskAction::Close)) {
+            state.accepted = mutate(i);
+            if (state.accepted) {
+                ++state.revision;
+                state.error.clear();
+                state.errorFileId.clear();
+                if (i.action != TaskAction::Activate && i.action != TaskAction::Close)
+                    save();
+            }
+        }
+    }
+    if (!dirty || loading || !viewDimension)
+        return;
+    auto placement=detail::taskPlayerOrigin();
+    if (!placement || !placement->dimensionId) return;
+    if (placement->dimensionId!=viewDimension) {
+        // A queued request may wait for the loader while the player travels.
+        // Refresh its view as well as its position before submitting it.
+        viewDimension=placement->dimensionId;
+        ++state.revision;
+    }
+    auto task = *pendingDefinition;
+    // Only files added without player coordinates need this fallback. A busy
+    // loader leaves those files unbound so a later attempt can acquire a position.
+    for (auto& file:task.files) if (!file.dimension) {
+        file.x=placement->x;
+        file.y=placement->y;
+        file.z=placement->z;
+        file.dimension=placement->dimensionId;
+    }
+    std::vector<structure::CompositionFile> files;
+    std::vector<std::string> paths;
+    for (auto const& file : task.files) {
+        files.push_back({file.id,
+                         {},
+                         file.visible && file.dimension==viewDimension,
+                         file.x,
+                         file.y,
+                         file.z,
+                         file.rotation / 90,
+                         file.mirror == "x"   ? 1
+                         : file.mirror == "z" ? 2
+                                              : 0,
+                         file.slice});
+        paths.push_back(file.path);
+    }
+    if (structure::detail::startTaskComposition(task.id, state.revision, {0,0,0,viewDimension}, std::move(files),
+                                                std::move(paths), reloadFiles)) {
+        pendingDefinition=std::move(task);
+        loading = true;
+        dirty = false;
+        reloadFiles = false;
+    }
+}
+
+bool editLoadedSchematic(std::shared_ptr<structure::LoadedStructure const> loaded,
+    std::string const& region,
+    std::array<int, 3> cell, structure::JavaBlockState const& replacement,
+    std::string& error) {
+    // This is called only by the client control frame. Keep the old projection
+    // until a complete new source has parsed and the task is scheduled again.
+    if (loading || dirty) {
+        error = "Wait for the current schematic update to finish";
+        return false;
+    }
+    if (!loaded || !loaded->sourceArchive) {
+        error = "Editable Litematic source is not loaded";
+        return false;
+    }
+    try {
+        auto const path = structure::detail::pathToUtf8(loaded->sourcePath);
+        structure::EditableLitematic document{*loaded->sourceArchive};
+        if (!document.setBlock(region, cell[0], cell[1], cell[2], replacement))
+            return true;
+        auto edited = std::make_shared<std::string const>(document.save());
+        if (!structure::detail::publishEditedSchematic(path, loaded->sourceArchive,
+                                                        std::move(edited), error))
+            return false;
+    } catch (std::exception const& exception) {
+        error = exception.what();
+        return false;
+    }
+    auto const path = structure::detail::pathToUtf8(loaded->sourcePath);
+    if (activeDefinition && std::any_of(activeDefinition->files.begin(), activeDefinition->files.end(),
+        [&](tasks::File const& file) { return file.path == path; })) {
+        pendingDefinition = *activeDefinition;
+        dirty = true;
+        reloadFiles = false;
+        ++state.revision;
+    }
+    return true;
+}
+
+} // namespace lholo::app

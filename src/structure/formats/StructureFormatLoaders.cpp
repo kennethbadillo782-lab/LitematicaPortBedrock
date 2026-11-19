@@ -1,0 +1,847 @@
+// LHolo - Client-side projection renderer for Minecraft Bedrock Windows
+// Copyright (C) 2026  MarmieQi
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+#include "structure/formats/StructureFormatLoaders.h"
+#include "structure/formats/LitematicNbt.h"
+#include "structure/formats/LitematicInput.h"
+#include "structure/formats/McstructureInput.h"
+#include "structure/formats/StructureFileLimits.h"
+#include "structure/StructureLoader.h"
+#include "block/BlockPlacementRules.h"
+#include "structure/java_to_bedrock/JavaBlockEntityToBedrock.h"
+#include "structure/java_to_bedrock/JavaToBedrock.h"
+
+#include <algorithm>
+#include <array>
+#include "structure/StructureGeneration.h"
+#include <bit>
+#include <cstdint>
+#include <cwctype>
+#include <filesystem>
+#include <fstream>
+#include <limits>
+#include <memory>
+#include <map>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <variant>
+#include <vector>
+
+
+#include "ll/api/service/Bedrock.h"
+#include "mc/client/game/ClientInstance.h"
+#include "mc/deps/nbt/CompoundTag.h"
+#include "mc/deps/nbt/ByteArrayTag.h"
+#include "mc/deps/nbt/IntArrayTag.h"
+#include "mc/deps/nbt/IntTag.h"
+#include "mc/deps/nbt/ListTag.h"
+#include "mc/world/level/block/Block.h"
+#include "mc/world/level/block/BlockType.h"
+#include "mc/world/level/block/actor/BlockActorType.h"
+#include "mc/world/level/block/registry/BlockTypeRegistry.h"
+#include "mc/world/level/material/Material.h"
+#include "mc/world/level/levelgen/structure/StructureBlockPalette.h"
+#include "mc/world/level/levelgen/structure/StructureTemplate.h"
+#include "mc/world/level/levelgen/structure/StructureCompression.h"
+#include "mc/world/level/Level.h"
+
+namespace lholo::structure::detail {
+namespace {
+
+void assignMaterialIndices(LoadedStructure& loaded) {
+    std::map<std::string, std::uint64_t> bodyCounts;
+    std::map<std::string, std::uint64_t> liquidCounts;
+    std::unordered_map<Block const*, std::string> cachedKeys;
+    std::string const emptyKey;
+    auto const keyFor = [&](Block const* value) -> std::string const& {
+        if (!value) return emptyKey;
+        return cachedKeys.try_emplace(value, block::materialKey(value->getTypeName()))
+            .first->second;
+    };
+    loaded.renderBlocks.forEachCountedValue([&](auto const& entry, std::uint64_t count) {
+        auto const& body = keyFor(entry.block);
+        auto const& liquid = keyFor(entry.liquid);
+        if (!body.empty()) bodyCounts[body] += count;
+        if (!liquid.empty()) liquidCounts[liquid] += count;
+    });
+    auto sortedKeys = [](auto const& counts) {
+        std::vector<std::string> keys;
+        for (auto const& [key, count] : counts) {
+            (void)count;
+            keys.push_back(key);
+        }
+        std::sort(keys.begin(), keys.end(), [&](auto const& left, auto const& right) {
+            if (counts.at(left) != counts.at(right)) return counts.at(left) > counts.at(right);
+            return left < right;
+        });
+        return keys;
+    };
+    auto const bodyKeys = sortedKeys(bodyCounts);
+    auto const liquidKeys = sortedKeys(liquidCounts);
+    std::map<std::string, int> bodyIndices;
+    std::map<std::string, int> liquidIndices;
+    for (std::size_t index = 0; index < bodyKeys.size(); ++index) {
+        bodyIndices.emplace(bodyKeys[index], static_cast<int>(index));
+    }
+    for (std::size_t index = 0; index < liquidKeys.size(); ++index) {
+        liquidIndices.emplace(
+            liquidKeys[index], static_cast<int>(bodyKeys.size() + index)
+        );
+    }
+    loaded.renderBlocks.forEachValue([&](auto& entry) {
+        if (auto const found = bodyIndices.find(keyFor(entry.block)); found != bodyIndices.end()) {
+            entry.materialIndex = found->second;
+        }
+        if (auto const found = liquidIndices.find(keyFor(entry.liquid)); found != liquidIndices.end()) {
+            entry.liquidMaterialIndex = found->second;
+        }
+    });
+    loaded.materialCount = bodyKeys.size() + liquidKeys.size();
+}
+
+std::optional<std::string> readFile(std::filesystem::path const& path, std::size_t maximumSize, std::string& error) {
+    std::error_code filesystemError;
+    if (!std::filesystem::exists(path, filesystemError) && !filesystemError) {
+        error = "No existe el archivo (se movio o se borro)";
+        return std::nullopt;
+    }
+    if (!std::filesystem::is_regular_file(path, filesystemError)) {
+        error = filesystemError ? filesystemError.message() : "路径不是普通文件";
+        return std::nullopt;
+    }
+    auto const size = std::filesystem::file_size(path, filesystemError);
+    if (filesystemError) {
+        error = filesystemError.message();
+        return std::nullopt;
+    }
+    if (size == 0 || size > maximumSize) {
+        error = "文件为空或超过 " + std::to_string(maximumSize / (1024 * 1024)) + " MiB 限制";
+        return std::nullopt;
+    }
+    if (size > static_cast<std::uintmax_t>(std::numeric_limits<std::streamsize>::max())) {
+        error = "文件过大";
+        return std::nullopt;
+    }
+
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        error = "无法打开文件";
+        return std::nullopt;
+    }
+    std::string bytes(static_cast<std::size_t>(size), '\0');
+    if (!input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()))) {
+        error = "读取文件失败";
+        return std::nullopt;
+    }
+    return bytes;
+}
+
+CompoundTagVariant const* findTag(CompoundTag const& parent, std::string_view name) {
+    auto const found = parent.mTags.find(name);
+    return found == parent.mTags.end() ? nullptr : &found->second;
+}
+
+CompoundTag const* findCompound(CompoundTag const& parent, std::string_view name) {
+    auto const* value = findTag(parent, name);
+    return value && value->hold<CompoundTag>() ? &value->get<CompoundTag>() : nullptr;
+}
+
+ListTag const* findList(CompoundTag const& parent, std::string_view name) {
+    auto const* value = findTag(parent, name);
+    return value && value->hold<ListTag>() ? &value->get<ListTag>() : nullptr;
+}
+
+bool readThreeInts(ListTag const& list, int& x, int& y, int& z) {
+    if (list.size() != 3) return false;
+    auto const read = [&list](std::size_t index, int& output) {
+        auto const& value = list[index];
+        if (!value.hold<IntTag>()) return false;
+        output = static_cast<int>(value.get<IntTag>());
+        return true;
+    };
+    return read(0, x) && read(1, y) && read(2, z);
+}
+
+bool inspectBlockLayer(ListTag const& layer, std::uint64_t volume, std::uint64_t& occupied) {
+    if (static_cast<std::uint64_t>(layer.size()) != volume) return false;
+    occupied = 0;
+    for (auto const& value : layer) {
+        if (!value.hold<IntTag>()) return false;
+        if (static_cast<int>(value.get<IntTag>()) >= 0) ++occupied;
+    }
+    return true;
+}
+
+// format 2 (1.26.5x+) stores each index layer as a TAG_Int_Array instead of
+// a nested TAG_List of ints.
+bool inspectBlockLayer(IntArrayTag const& layer, std::uint64_t volume, std::uint64_t& occupied) {
+    if (static_cast<std::uint64_t>(layer.size()) != volume) return false;
+    occupied = 0;
+    for (auto const& value : layer) {
+        if (static_cast<int>(value) >= 0) ++occupied;
+    }
+    return true;
+}
+
+
+template <class T>
+T const* javaValue(JavaNbtTag::Compound const& compound, std::string_view name) {
+    auto const found = compound.find(std::string{name});
+    if (found == compound.end()) return nullptr;
+    return std::get_if<T>(&found->second.value);
+}
+
+bool readJavaVec3(JavaNbtTag::Compound const& parent, std::string_view name, int& x, int& y, int& z) {
+    auto const* compound = javaValue<JavaNbtTag::Compound>(parent, name);
+    if (!compound) return false;
+    auto const* xValue = javaValue<std::int32_t>(*compound, "x");
+    auto const* yValue = javaValue<std::int32_t>(*compound, "y");
+    auto const* zValue = javaValue<std::int32_t>(*compound, "z");
+    if (!xValue || !yValue || !zValue) return false;
+    x = *xValue;
+    y = *yValue;
+    z = *zValue;
+    return true;
+}
+
+std::optional<bool> readJavaBoolean(JavaNbtTag::Compound const& parent, std::string_view name) {
+    if (auto const* value = javaValue<std::int8_t>(parent, name)) return *value != 0;
+    return std::nullopt;
+}
+
+bool readJavaSignSide(JavaNbtTag::Compound const& parent, std::string_view name, JavaSignSideData& output) {
+    auto const* side = javaValue<JavaNbtTag::Compound>(parent, name);
+    if (!side) return false;
+    if (auto const* messages = javaValue<JavaNbtTag::List>(*side, "messages")) {
+        auto const count = std::min(messages->size(), output.messages.size());
+        for (std::size_t line = 0; line < count; ++line) {
+            if (auto const* message = std::get_if<std::string>(&(*messages)[line].value)) {
+                output.messages[line] = *message;
+            }
+        }
+    }
+    if (auto const glowing = readJavaBoolean(*side, "has_glowing_text")) output.glowing = *glowing;
+    return true;
+}
+
+std::optional<JavaSignBlockEntityData> readJavaSignBlockEntity(JavaNbtTag::Compound const& entity) {
+    JavaSignBlockEntityData result;
+    bool const hasModernFront = readJavaSignSide(entity, "front_text", result.front);
+    bool const hasModernBack = readJavaSignSide(entity, "back_text", result.back);
+    bool       hasLegacyText{};
+    if (!hasModernFront) {
+        static constexpr std::array<std::string_view, 4> legacyLines{"Text1", "Text2", "Text3", "Text4"};
+        for (std::size_t line = 0; line < legacyLines.size(); ++line) {
+            if (auto const* message = javaValue<std::string>(entity, legacyLines[line])) {
+                result.front.messages[line] = *message;
+                hasLegacyText = true;
+            }
+        }
+        if (auto const glowing = readJavaBoolean(entity, "GlowingText")) result.front.glowing = *glowing;
+    }
+    if (auto const waxed = readJavaBoolean(entity, "is_waxed")) result.waxed = *waxed;
+    return hasModernFront || hasModernBack || hasLegacyText
+        ? std::optional<JavaSignBlockEntityData>{std::move(result)} : std::nullopt;
+}
+
+std::uint64_t localCellIndex(int x, int y, int z, int sizeY, int sizeZ) {
+    return (static_cast<std::uint64_t>(x) * static_cast<std::uint64_t>(sizeY)
+            + static_cast<std::uint64_t>(y))
+        * static_cast<std::uint64_t>(sizeZ) + static_cast<std::uint64_t>(z);
+}
+
+
+ResolvedJavaBlock resolveJavaBlock(JavaNbtTag const& paletteEntry, int javaDataVersion) {
+    auto const* compound = std::get_if<JavaNbtTag::Compound>(&paletteEntry.value);
+    if (!compound) return {};
+    auto const* name = javaValue<std::string>(*compound, "Name");
+    if (!name || name->empty()) return {};
+    // Carry the Java `Properties` (all string values) into the mapper so that
+    // orientation and other stored states survive the Java -> Bedrock crossing.
+    std::vector<std::pair<std::string, std::string>> properties;
+    if (auto const* props = javaValue<JavaNbtTag::Compound>(*compound, "Properties")) {
+        properties.reserve(props->size());
+        for (auto const& [key, value] : *props) {
+            if (auto const* text = std::get_if<std::string>(&value.value)) {
+                properties.emplace_back(key, *text);
+            }
+        }
+    }
+    return resolveJavaBlockState(*name, properties, javaDataVersion);
+}
+
+
+std::shared_ptr<LoadedStructure> loadMcstructure(std::filesystem::path const& path, std::string& error) {
+    auto bytes = readFile(path, kMaximumMcstructureFileSize, error);
+    if (!bytes) return nullptr;
+
+    auto root = CompoundTag::fromBinaryNbt(*bytes, true);
+    if (!root) {
+        error = "不是有效的 Bedrock little-endian NBT: " + root.error().message();
+        return nullptr;
+    }
+
+    auto const* size = findList(*root, "size");
+    auto const* structure = findCompound(*root, "structure");
+    std::optional<CompoundTag> decompressedStructure;
+    auto compression = StructureCompression::None;
+    if (auto const* tag = findTag(*root, "compression")) {
+        if (!tag->hold<IntTag>()) {
+            error = "mcstructure compression 标签不是整数";
+            return nullptr;
+        }
+        compression = static_cast<StructureCompression>(static_cast<int>(tag->get<IntTag>()));
+    }
+    if (compression == StructureCompression::Zlib) {
+        auto const* tag = findTag(*root, "structure");
+        if (!tag || !tag->hold<ByteArrayTag>()) {
+            error = "mcstructure 压缩结构不是 ByteArray 标签";
+            return nullptr;
+        }
+        auto const& payload = tag->get<ByteArrayTag>();
+        auto inflated = inflateMcstructureTag(
+            {reinterpret_cast<char const*>(payload.data()), payload.size()}, kMaximumMcstructureFileSize, error
+        );
+        if (!inflated) return nullptr;
+        auto decoded = CompoundTag::fromBinaryNbt(*inflated, true);
+        if (!decoded) {
+            error = "mcstructure 解压后的结构不是有效 NBT: " + decoded.error().message();
+            return nullptr;
+        }
+        decompressedStructure.emplace(std::move(*decoded));
+        structure = &*decompressedStructure;
+    } else if (compression != StructureCompression::None) {
+        error = "不支持的 mcstructure 压缩方式";
+        return nullptr;
+    }
+    // Inspect the decoded payload, but let vanilla load the original envelope
+    // so its compression, format upgrades and palette handling stay native.
+    if (!size || !structure) {
+        error = "缺少 size 或 structure 标签";
+        return nullptr;
+    }
+
+    auto loaded = std::make_shared<LoadedStructure>();
+    loaded->sourceArchive=std::make_shared<std::string const>(std::move(*bytes));
+    if (!readThreeInts(*size, loaded->sizeX, loaded->sizeY, loaded->sizeZ)
+        || loaded->sizeX <= 0 || loaded->sizeY <= 0 || loaded->sizeZ <= 0) {
+        error = "结构尺寸无效";
+        return nullptr;
+    }
+    loaded->volume = static_cast<std::uint64_t>(loaded->sizeX)
+        * static_cast<std::uint64_t>(loaded->sizeY) * static_cast<std::uint64_t>(loaded->sizeZ);
+    loaded->regions.push_back({0, 0, 0, loaded->sizeX, loaded->sizeY, loaded->sizeZ});
+
+    auto const* blockIndices = findList(*structure, "block_indices");
+    if (!blockIndices || blockIndices->empty()
+        || !((*blockIndices)[0].hold<ListTag>() || (*blockIndices)[0].hold<IntArrayTag>())) {
+        error = "block_indices 不是有效的双层索引";
+        return nullptr;
+    }
+    if (blockIndices->size() > 2) {
+        error = "block_indices 包含过多索引层";
+        return nullptr;
+    }
+    // format 1: List<List<Int>>（主层 + 可选副层）。
+    // format 2 (1.26.5x 起): List<IntArray>——每层一个 IntArray，副层取消
+    // （含水内联为方块状态，通常只有一个 IntArray）。两种形状都接受，缺失的
+    // 副层视为全空；真正的解析交给原版 StructureTemplate::load，它会把两种
+    // 形状都规范化为 mBlockIndices + optional<mExtraBlockIndices>。
+    if ((*blockIndices)[0].hold<ListTag>()) {
+        if (!inspectBlockLayer((*blockIndices)[0].get<ListTag>(), loaded->volume, loaded->primaryBlocks)) {
+            error = "方块索引数量或类型与结构尺寸不匹配";
+            return nullptr;
+        }
+        if (blockIndices->size() >= 2) {
+            if (!(*blockIndices)[1].hold<ListTag>()
+                || !inspectBlockLayer((*blockIndices)[1].get<ListTag>(), loaded->volume, loaded->secondaryBlocks)) {
+                error = "方块索引数量或类型与结构尺寸不匹配";
+                return nullptr;
+            }
+        }
+    } else {
+        if (!inspectBlockLayer((*blockIndices)[0].get<IntArrayTag>(), loaded->volume, loaded->primaryBlocks)) {
+            error = "方块索引数量或类型与结构尺寸不匹配";
+            return nullptr;
+        }
+        if (blockIndices->size() >= 2) {
+            if (!(*blockIndices)[1].hold<IntArrayTag>()
+                || !inspectBlockLayer((*blockIndices)[1].get<IntArrayTag>(), loaded->volume, loaded->secondaryBlocks)) {
+                error = "方块索引数量或类型与结构尺寸不匹配";
+                return nullptr;
+            }
+        }
+    }
+
+    auto const* palette = findCompound(*structure, "palette");
+    auto const* defaultPalette = palette ? findCompound(*palette, "default") : nullptr;
+    auto const* blockPalette = defaultPalette ? findList(*defaultPalette, "block_palette") : nullptr;
+    auto const* blockPositionData = defaultPalette
+        ? findCompound(*defaultPalette, "block_position_data") : nullptr;
+    if (!blockPalette) {
+        error = "缺少 palette.default.block_palette";
+        return nullptr;
+    }
+    loaded->paletteEntries = static_cast<std::uint64_t>(blockPalette->size());
+    // Use the game's own StructureTemplate loader. Besides reading both index
+    // layers, it performs the format-version block-state upgrade and resolves
+    // blocks through the active world's palette/unknown-block registry. Calling
+    // Block::tryGetFromRegistry() directly skips that official load pipeline and
+    // can turn valid legacy states (notably water and doors) into unknown blocks.
+    // StructureTemplate::create() internally uses ll::service::getLevel(),
+    // which only exists for the integrated (local) server and returns null on
+    // remote server connections. Build the template against the client
+    // multiplayer Level instead; it exists in local worlds and on servers.
+    auto const clientLevel = ll::service::getMultiPlayerLevel();
+    if (!clientLevel) {
+        error = "尚未进入世界，无法解析结构";
+        return nullptr;
+    }
+    auto nativeStructure = std::make_unique<StructureTemplate>(
+        "lholo:projection",
+        clientLevel->getUnknownBlockTypeRegistry()
+    );
+    if (!nativeStructure->load(*root)) {
+        error = "原版 StructureTemplate 无法加载该结构";
+        return nullptr;
+    }
+    auto const& nativeData = nativeStructure->mStructureTemplateData.get();
+    auto const& nativeOrigin = nativeData.mStructureWorldOrigin.get();
+    loaded->sourceWorldOrigin = {nativeOrigin.x, nativeOrigin.y, nativeOrigin.z};
+    auto const& nativeSize = nativeData.mSize.get();
+    if (nativeSize.x != loaded->sizeX || nativeSize.y != loaded->sizeY || nativeSize.z != loaded->sizeZ) {
+        error = "原版 StructureTemplate 返回的尺寸与文件不一致";
+        return nullptr;
+    }
+    auto const* nativePalette = nativeData.getPalette(StructureTemplateData::DEFAULT_PALETTE_NAME());
+    if (!nativePalette) {
+        error = "原版 StructureTemplate 缺少 default palette";
+        return nullptr;
+    }
+    auto const& nativePrimary = nativeData.mBlockIndices.get();
+    auto const& nativeSecondaryStorage = nativeData.mExtraBlockIndices.get();
+    // Since 26.51 mExtraBlockIndices is std::optional: the vanilla loader
+    // collapses the second layer into an empty value whenever it holds nothing
+    // but NO_BLOCK_INDEX_VALUE entries. That reports "no water or waterlogged
+    // blocks in this structure", not corruption, so the layer must be treated
+    // as empty rather than as a load failure. The file's own second layer was
+    // already validated above, so an absent layer can only be legitimate when
+    // that raw pass counted no occupied cells; anything else stays inconsistent
+    // and is rejected by the size check below.
+    if (nativePrimary.size() != loaded->volume
+        || (!nativeSecondaryStorage && loaded->secondaryBlocks > 0)
+        || (nativeSecondaryStorage && nativeSecondaryStorage->size() != loaded->volume)) {
+        error = "原版 StructureTemplate 的方块索引数量与结构体积不一致";
+        return nullptr;
+    }
+    auto const unknownRegistry = nativeStructure->mUnknownBlockRegistry.get();
+    auto const resolveNative = [&](int paletteIndex) -> Block const* {
+        if (paletteIndex < 0) return nullptr;
+        return nativePalette->tryGetBlock(
+            static_cast<std::uint64_t>(paletteIndex), unknownRegistry
+        );
+    };
+    loaded->renderBlocks.reserve(static_cast<std::size_t>(loaded->primaryBlocks + loaded->secondaryBlocks));
+    auto const yz = static_cast<std::uint64_t>(loaded->sizeY) * static_cast<std::uint64_t>(loaded->sizeZ);
+    for (std::uint64_t index = 0; index < loaded->volume; ++index) {
+        if (nativePrimary[static_cast<std::size_t>(index)] < 0
+            && (!nativeSecondaryStorage || (*nativeSecondaryStorage)[static_cast<std::size_t>(index)] < 0))
+            loaded->omittedCells.push_back(index);
+        auto const* primary = resolveNative(nativePrimary[static_cast<std::size_t>(index)]);
+        auto const* secondary = nativeSecondaryStorage
+            ? resolveNative((*nativeSecondaryStorage)[static_cast<std::size_t>(index)])
+            : nullptr;
+        bool const primaryAir = primary && primary->isAir();
+        bool const secondaryAir = secondary && secondary->isAir();
+        if (primaryAir) primary = nullptr;
+        if (secondaryAir) secondary = nullptr;
+        Block const* block{};
+        Block const* liquid{};
+        auto const assign = [&](Block const* value) {
+            if (!value) return;
+            if (value->getBlockType().mMaterial->mLiquid) liquid = value;
+            else if (!block) block = value;
+        };
+        assign(primary);
+        assign(secondary);
+        // Bubble columns remain the body even when their material is liquid.
+        // Preserve a separately decoded liquid only; dry columns must stay dry.
+        if (primary && primary->getTypeName() == "minecraft:bubble_column") {
+            block = primary;
+            liquid = (secondary && secondary->getBlockType().mMaterial->mLiquid) ? secondary : nullptr;
+        } else if (secondary && secondary->getTypeName() == "minecraft:bubble_column") {
+            block = secondary;
+            liquid = (primary && primary->getBlockType().mMaterial->mLiquid) ? primary : nullptr;
+        }
+        if (!block && !liquid) {
+            loaded->hasAirCells |= primaryAir || secondaryAir;
+            continue;
+        }
+        auto const x = index / yz;
+        auto const remainder = index % yz;
+        auto const y = remainder / static_cast<std::uint64_t>(loaded->sizeZ);
+        auto const z = remainder % static_cast<std::uint64_t>(loaded->sizeZ);
+        std::shared_ptr<CompoundTag const> blockEntityNbt;
+        if (blockPositionData) {
+            auto const* positionData = findCompound(*blockPositionData, std::to_string(index));
+            auto const* entityData = positionData
+                ? findCompound(*positionData, "block_entity_data") : nullptr;
+            if (entityData) blockEntityNbt = std::make_shared<CompoundTag const>(*entityData);
+        }
+        loaded->renderBlocks.push_back({
+            static_cast<int>(x), static_cast<int>(y), static_cast<int>(z), block, liquid,
+            std::move(blockEntityNbt)
+        });
+    }
+    assignMaterialIndices(*loaded);
+    loaded->generation = nextStructureGeneration();
+    loaded->sourcePath = path;
+    return loaded;
+}
+
+std::shared_ptr<LoadedStructure> loadLitematicArchive(std::filesystem::path const& path,
+    std::shared_ptr<std::string const> archive, std::string& error) try {
+    if (!ll::service::getMultiPlayerLevel()) {
+        error = "尚未进入世界，无法解析结构";
+        return nullptr;
+    }
+
+    // The Java-to-Bedrock mapper caches non-owning Block pointers while resolving one
+    // palette. Minecraft rebuilds those registry-owned permutations across a
+    // world teardown, so a cache from the previous world must never be reused.
+    resetJavaBlockMappingCache();
+
+    auto bytes = inflateGzip(*archive, error);
+    if (!bytes) return nullptr;
+
+    auto root = JavaNbtReader{*bytes}.readRoot();
+    auto const* storedFormatVersion = javaValue<std::int32_t>(root, "Version");
+    int const litematicVersion = storedFormatVersion ? *storedFormatVersion : 0;
+    auto const* storedDataVersion = javaValue<std::int32_t>(root, "MinecraftDataVersion");
+    int const javaDataVersion = storedDataVersion ? *storedDataVersion : 0;
+    auto const* regions = javaValue<JavaNbtTag::Compound>(root, "Regions");
+    if (!regions || regions->empty()) {
+        error = "Litematic 缺少 Regions 或没有区域";
+        return nullptr;
+    }
+
+    struct Region {
+        std::string name;
+        int posX{}, posY{}, posZ{};
+        int signedX{}, signedY{}, signedZ{};
+        int sizeX{}, sizeY{}, sizeZ{};
+        unsigned bits{};
+        std::vector<ResolvedJavaBlock> palette;
+        JavaNbtTag::LongArray const* states{};
+        std::unordered_map<std::uint64_t, JavaNbtTag::Compound const*> blockEntities;
+    };
+    std::vector<Region> parsedRegions;
+    parsedRegions.reserve(regions->size());
+    std::int64_t minX = std::numeric_limits<std::int64_t>::max();
+    std::int64_t minY = minX;
+    std::int64_t minZ = minX;
+    std::int64_t maxX = std::numeric_limits<std::int64_t>::min();
+    std::int64_t maxY = maxX;
+    std::int64_t maxZ = maxX;
+    std::uint64_t paletteEntries{}, blockEntityEntries{};
+
+    for (auto const& [regionName, regionTag] : *regions) {
+        auto const* compound = std::get_if<JavaNbtTag::Compound>(&regionTag.value);
+        if (!compound) continue;
+        Region region;
+        region.name = regionName;
+        if (!readJavaVec3(*compound, "Position", region.posX, region.posY, region.posZ)
+            || !readJavaVec3(*compound, "Size", region.signedX, region.signedY, region.signedZ)
+            || region.signedX == 0 || region.signedY == 0 || region.signedZ == 0
+            || region.signedX == std::numeric_limits<int>::min()
+            || region.signedY == std::numeric_limits<int>::min()
+            || region.signedZ == std::numeric_limits<int>::min()) {
+            error = "Litematic 区域 " + regionName + " 的 Position/Size 无效";
+            return nullptr;
+        }
+        region.sizeX = std::abs(region.signedX);
+        region.sizeY = std::abs(region.signedY);
+        region.sizeZ = std::abs(region.signedZ);
+        auto const* storedRegionDataVersion = javaValue<std::int32_t>(*compound, "DataVersion");
+        int const regionDataVersion = storedRegionDataVersion ? *storedRegionDataVersion : javaDataVersion;
+        auto const* palette = javaValue<JavaNbtTag::List>(*compound, "BlockStatePalette");
+        region.states = javaValue<JavaNbtTag::LongArray>(*compound, "BlockStates");
+        if (!palette || palette->empty() || !region.states || region.states->empty()) {
+            error = "Litematic 区域 " + regionName + " 缺少方块调色板或 BlockStates";
+            return nullptr;
+        }
+        region.palette.reserve(palette->size());
+        for (auto const& entry : *palette) {
+            region.palette.push_back(resolveJavaBlock(entry, regionDataVersion));
+        }
+        region.bits = std::max(2u,static_cast<unsigned>(std::bit_width(region.palette.size()-1)));
+        paletteEntries += palette->size();
+
+        if (auto const* blockEntities = javaValue<JavaNbtTag::List>(*compound, "TileEntities")) {
+            blockEntityEntries += blockEntities->size();
+            region.blockEntities.reserve(blockEntities->size());
+            for (auto const& entry : *blockEntities) {
+                auto const* wrapper = std::get_if<JavaNbtTag::Compound>(&entry.value);
+                if (!wrapper) continue;
+                auto const* x = javaValue<std::int32_t>(*wrapper, "x");
+                auto const* y = javaValue<std::int32_t>(*wrapper, "y");
+                auto const* z = javaValue<std::int32_t>(*wrapper, "z");
+                if (!x || !y || !z || *x < 0 || *y < 0 || *z < 0
+                    || *x >= region.sizeX || *y >= region.sizeY || *z >= region.sizeZ) {
+                    continue;
+                }
+                auto const* entity = litematicVersion == 1
+                    ? javaValue<JavaNbtTag::Compound>(*wrapper, "TileNBT") : wrapper;
+                if (!entity || entity->empty()) continue;
+                region.blockEntities.insert_or_assign(
+                    localCellIndex(*x, *y, *z, region.sizeY, region.sizeZ), entity
+                );
+            }
+        }
+
+        auto const endX = static_cast<std::int64_t>(region.posX)
+            + (region.signedX < 0 ? -(static_cast<std::int64_t>(region.sizeX) - 1) : region.sizeX - 1);
+        auto const endY = static_cast<std::int64_t>(region.posY)
+            + (region.signedY < 0 ? -(static_cast<std::int64_t>(region.sizeY) - 1) : region.sizeY - 1);
+        auto const endZ = static_cast<std::int64_t>(region.posZ)
+            + (region.signedZ < 0 ? -(static_cast<std::int64_t>(region.sizeZ) - 1) : region.sizeZ - 1);
+        minX = std::min({minX, static_cast<std::int64_t>(region.posX), endX});
+        minY = std::min({minY, static_cast<std::int64_t>(region.posY), endY});
+        minZ = std::min({minZ, static_cast<std::int64_t>(region.posZ), endZ});
+        maxX = std::max({maxX, static_cast<std::int64_t>(region.posX), endX});
+        maxY = std::max({maxY, static_cast<std::int64_t>(region.posY), endY});
+        maxZ = std::max({maxZ, static_cast<std::int64_t>(region.posZ), endZ});
+        parsedRegions.push_back(std::move(region));
+    }
+    if (parsedRegions.empty()) {
+        error = "Litematic 没有可加载的区域";
+        return nullptr;
+    }
+
+    auto const extentX = maxX - minX + 1;
+    auto const extentY = maxY - minY + 1;
+    auto const extentZ = maxZ - minZ + 1;
+    if (extentX <= 0 || extentY <= 0 || extentZ <= 0
+        || extentX > std::numeric_limits<int>::max()
+        || extentY > std::numeric_limits<int>::max()
+        || extentZ > std::numeric_limits<int>::max()) {
+        error = "Litematic 合并后的结构尺寸无效或过大";
+        return nullptr;
+    }
+
+    auto loaded = std::make_shared<LoadedStructure>();
+    loaded->sourceArchive=std::move(archive);
+    if (auto const* metadata = javaValue<JavaNbtTag::Compound>(root, "Metadata")) {
+        if (auto const* value = javaValue<std::string>(*metadata, "Name")) loaded->name = *value;
+        if (auto const* value = javaValue<std::string>(*metadata, "Author")) loaded->author = *value;
+        if (auto const* value = javaValue<std::string>(*metadata, "Description")) loaded->description = *value;
+    }
+    loaded->sizeX = static_cast<int>(extentX);
+    loaded->sizeY = static_cast<int>(extentY);
+    loaded->sizeZ = static_cast<int>(extentZ);
+    if (static_cast<std::uint64_t>(extentX) > std::numeric_limits<std::uint64_t>::max() /
+        static_cast<std::uint64_t>(extentY) / static_cast<std::uint64_t>(extentZ)) {
+        error = "Litematic 合并体积超出支持范围";
+        return nullptr;
+    }
+    loaded->volume = static_cast<std::uint64_t>(extentX)
+        * static_cast<std::uint64_t>(extentY) * static_cast<std::uint64_t>(extentZ);
+    loaded->paletteEntries = paletteEntries;
+    loaded->regions.reserve(parsedRegions.size());
+    // Count actual mapped cells before reserving. Metadata is untrusted and
+    // must never drive a multi-gigabyte allocation. No cell objects are created.
+    std::size_t largestRegion{};
+    for (auto const& region : parsedRegions) {
+        auto volume = static_cast<std::uint64_t>(region.sizeX) * region.sizeY * region.sizeZ;
+        auto bits = region.bits;
+        std::size_t occupied{};
+        if (volume > (std::numeric_limits<std::uint64_t>::max() - 63) / bits ||
+            (volume * bits + 63) / 64 > region.states->size()) {
+            error = "Litematic 的 BlockStates 数量与区域尺寸不匹配";
+            return nullptr;
+        }
+        for (std::uint64_t i = 0; i < volume; ++i) {
+            auto id = packedPaletteIndex(*region.states, i, bits);
+            if (id < region.palette.size()) {
+                auto const& value = region.palette[id];
+                if (value.mapped && (value.block || value.liquid)) ++occupied;
+            }
+        }
+        largestRegion = std::max(largestRegion,occupied);
+    }
+    if (!loaded->renderBlocks.beginCompact(loaded->sizeY, loaded->sizeZ, loaded->volume - 1,
+                                          paletteEntries + blockEntityEntries)) {
+        error = "Litematic 坐标或调色板超出紧凑存储范围";
+        return nullptr;
+    }
+    loaded->renderBlocks.reserveCompact(largestRegion);
+
+    for (std::size_t regionNumber = 0; regionNumber < parsedRegions.size(); ++regionNumber) {
+        auto const& region = parsedRegions[regionNumber];
+        auto const regionVolume = static_cast<std::uint64_t>(region.sizeX)
+            * static_cast<std::uint64_t>(region.sizeY) * static_cast<std::uint64_t>(region.sizeZ);
+        // Litematica stores BlockStates from the region's minimum corner even
+        // when Size is negative. The sign only records which selection corner
+        // is Position; it must not mirror the block data.
+        auto const regionMinX = static_cast<std::int64_t>(region.posX)
+            - (region.signedX < 0 ? static_cast<std::int64_t>(region.sizeX) - 1 : 0);
+        auto const regionMinY = static_cast<std::int64_t>(region.posY)
+            - (region.signedY < 0 ? static_cast<std::int64_t>(region.sizeY) - 1 : 0);
+        auto const regionMinZ = static_cast<std::int64_t>(region.posZ)
+            - (region.signedZ < 0 ? static_cast<std::int64_t>(region.sizeZ) - 1 : 0);
+        loaded->regions.push_back({
+            static_cast<int>(regionMinX - minX),
+            static_cast<int>(regionMinY - minY),
+            static_cast<int>(regionMinZ - minZ),
+            region.sizeX,
+            region.sizeY,
+            region.sizeZ,
+            -1,
+            region.name,
+        });
+        auto const bits = region.bits;
+        std::vector<std::uint32_t> paletteIds;
+        paletteIds.reserve(region.palette.size());
+        for (auto const& value : region.palette) {
+            StructureBlock entry{0, 0, 0, value.block, value.liquid};
+            entry.regionIndex = static_cast<int>(regionNumber);
+            paletteIds.push_back(loaded->renderBlocks.addPalette(std::move(entry)));
+        }
+        for (std::uint64_t index = 0; index < regionVolume; ++index) {
+            auto const paletteIndex = packedPaletteIndex(*region.states, index, bits);
+            if (paletteIndex >= region.palette.size()) {
+                ++loaded->unmappedBlocks;
+                continue;
+            }
+            auto const& resolved = region.palette[paletteIndex];
+            if (!resolved.mapped) {
+                ++loaded->unmappedBlocks;
+                continue;
+            }
+            if (!resolved.block && !resolved.liquid) {
+                loaded->hasAirCells = true;
+                continue;
+            }
+            auto const layer = static_cast<std::uint64_t>(region.sizeX) * region.sizeZ;
+            auto const localY = index / layer;
+            auto const remainder = index % layer;
+            auto const localZ = remainder / static_cast<std::uint64_t>(region.sizeX);
+            auto const localX = remainder % static_cast<std::uint64_t>(region.sizeX);
+            auto const worldX = regionMinX + static_cast<std::int64_t>(localX);
+            auto const worldY = regionMinY + static_cast<std::int64_t>(localY);
+            auto const worldZ = regionMinZ + static_cast<std::int64_t>(localZ);
+            auto const x = static_cast<std::uint64_t>(worldX - minX);
+            auto const y = static_cast<std::uint64_t>(worldY - minY);
+            auto const z = static_cast<std::uint64_t>(worldZ - minZ);
+            auto const mergedIndex = (x * static_cast<std::uint64_t>(loaded->sizeY) + y)
+                * static_cast<std::uint64_t>(loaded->sizeZ) + z;
+            std::shared_ptr<CompoundTag const> blockEntityNbt;
+            auto const blockEntity = region.blockEntities.find(
+                localCellIndex(
+                    static_cast<int>(localX), static_cast<int>(localY), static_cast<int>(localZ),
+                    region.sizeY, region.sizeZ
+                )
+            );
+            if (resolved.block && blockEntity != region.blockEntities.end()) {
+                auto const actorType = resolved.block->getBlockType().getBlockEntityType();
+                if (actorType == BlockActorType::Sign || actorType == BlockActorType::HangingSign) {
+                    if (auto const signData = readJavaSignBlockEntity(*blockEntity->second)) {
+                        blockEntityNbt = convertJavaSignBlockEntity(
+                            *signData,
+                            actorType == BlockActorType::HangingSign
+                                ? JavaSignBlockEntityKind::HangingSign : JavaSignBlockEntityKind::Sign,
+                            static_cast<int>(x), static_cast<int>(y), static_cast<int>(z)
+                        );
+                    }
+                }
+            }
+            auto paletteId = paletteIds[paletteIndex];
+            if (blockEntityNbt) {
+                StructureBlock entry{0, 0, 0, resolved.block, resolved.liquid,
+                                     std::move(blockEntityNbt)};
+                entry.regionIndex = static_cast<int>(regionNumber);
+                paletteId = loaded->renderBlocks.addPalette(std::move(entry));
+            }
+            loaded->renderBlocks.appendCompact(mergedIndex, paletteId);
+        }
+        if (parsedRegions.size() > 1) loaded->renderBlocks.mergeCompactRegion();
+    }
+    // LongArray views and entity pointers end here, before releasing their
+    // backing bytes. Published storage owns its native block-entity data.
+    parsedRegions.clear();
+    root.clear();
+    bytes.reset();
+    loaded->renderBlocks.finishCompact();
+    loaded->primaryBlocks = loaded->renderBlocks.size();
+    assignMaterialIndices(*loaded);
+    loaded->generation = nextStructureGeneration();
+    loaded->sourcePath = path;
+    return loaded;
+} catch (std::exception const& exception) {
+    error = exception.what();
+    return nullptr;
+}
+
+std::shared_ptr<LoadedStructure> loadLitematic(std::filesystem::path const& path, std::string& error) {
+    auto compressed = readFile(path, kMaximumLitematicFileSize, error);
+    if (!compressed) return nullptr;
+    return loadLitematicArchive(path,
+        std::make_shared<std::string const>(std::move(*compressed)), error);
+}
+
+} // namespace
+
+std::shared_ptr<LoadedStructure> loadStructureFile(std::filesystem::path const& path, std::string& error) {
+    auto extension = path.extension().wstring();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t value) {
+        return static_cast<wchar_t>(std::towlower(value));
+    });
+    std::shared_ptr<LoadedStructure> loaded;
+    if (extension == L".litematic") loaded = loadLitematic(path, error);
+    else if (extension == L".mcstructure") loaded = loadMcstructure(path, error);
+    else {
+        error = "不支持的文件格式，请选择 .mcstructure 或 .litematic";
+        return nullptr;
+    }
+    if (loaded && !loaded->hasProjectionContent()) {
+        error = "结构中没有可投影方块";
+        return nullptr;
+    }
+    return loaded;
+}
+
+std::shared_ptr<LoadedStructure> loadLitematicMemory(std::filesystem::path const& path,
+    std::shared_ptr<std::string const> archive, std::string& error) {
+    auto extension = path.extension().wstring();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](wchar_t value) {
+        return static_cast<wchar_t>(std::towlower(value));
+    });
+    if (!archive || archive->size() > kMaximumLitematicFileSize || extension != L".litematic") {
+        error = "Invalid in-memory Litematic source";
+        return nullptr;
+    }
+    auto loaded = loadLitematicArchive(path, std::move(archive), error);
+    if (loaded && !loaded->hasProjectionContent()) {
+        error = "结构中没有可投影方块";
+        return nullptr;
+    }
+    return loaded;
+}
+
+} // namespace lholo::structure::detail

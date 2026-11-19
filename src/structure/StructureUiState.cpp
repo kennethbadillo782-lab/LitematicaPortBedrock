@@ -1,0 +1,537 @@
+// LHolo - Client-side projection renderer for Minecraft Bedrock Windows
+// Copyright (C) 2026  MarmieQi
+
+#include "structure/StructureUiState.h"
+
+#include "ui/HotkeyFormat.h"
+#include "input/MaterialHudPageRequest.h"
+
+#include <Windows.h>
+
+#include <algorithm>
+#include <utility>
+
+namespace lholo::structure::detail {
+namespace {
+
+template <class T>
+bool updateRelaxed(std::atomic<T>& target, T value) {
+    if (target.load(std::memory_order_relaxed) == value) return false;
+    target.store(value, std::memory_order_relaxed);
+    return true;
+}
+
+struct DefaultHotkey {
+    unsigned int key;
+    unsigned int modifiers;
+};
+
+constexpr std::array<DefaultHotkey, input::kHotkeyCount> kDefaultHotkeys{{
+    {'M',     0},
+    {VK_LEFT, lholo::ui::kHotkeyModifierControl},
+    {VK_RIGHT,lholo::ui::kHotkeyModifierControl},
+    {VK_UP,   lholo::ui::kHotkeyModifierControl},
+    {VK_DOWN, lholo::ui::kHotkeyModifierControl},
+    {VK_UP,   lholo::ui::kHotkeyModifierShift},
+    {VK_DOWN, lholo::ui::kHotkeyModifierShift},
+    {VK_UP,   lholo::ui::kHotkeyModifierAlt},
+    {VK_DOWN, lholo::ui::kHotkeyModifierAlt},
+    {0, 0}, // Material HUD previous page: unbound by default.
+    {0, 0}, // Material HUD next page: unbound by default.
+    {'V',0}, // Explicit execute binding from the user reference; other new actions are unbound.
+}};
+
+// "Reset all hotkeys" restores this together with the bindings: it is an input
+// preference of the same page, and the gesture it turns off cannot be reached
+// through any other controls, so the page needs one way back to the default.
+constexpr bool kDefaultAltWheelOffsetEnabled = true;
+
+} // namespace
+
+StructureUiState::StructureUiState() {
+    for (std::size_t index = 0; index < mHotkeys.size(); ++index) {
+        mHotkeys[index].key.store(kDefaultHotkeys[index].key, std::memory_order_relaxed);
+        mHotkeys[index].modifiers.store(kDefaultHotkeys[index].modifiers, std::memory_order_relaxed);
+    }
+}
+
+StructureUiState& StructureUiState::getInstance() {
+    static StructureUiState instance;
+    return instance;
+}
+
+StructureUiState::HotkeyStorage* StructureUiState::hotkeyStorage(std::size_t index) {
+    return index < mHotkeys.size() ? &mHotkeys[index] : nullptr;
+}
+
+StructureUiState::HotkeyStorage const* StructureUiState::hotkeyStorage(std::size_t index) const {
+    return index < mHotkeys.size() ? &mHotkeys[index] : nullptr;
+}
+
+HudStateSnapshot StructureUiState::hud() const {
+    return {
+        mHudEnabled.load(std::memory_order_relaxed),
+        mHudShowFileName.load(std::memory_order_relaxed),
+        mHudShowLayer.load(std::memory_order_relaxed),
+        mHudShowOverallProgress.load(std::memory_order_relaxed),
+        mHudShowProgress.load(std::memory_order_relaxed),
+        mHudShowWrongState.load(std::memory_order_relaxed),
+        mHudShowWrongType.load(std::memory_order_relaxed),
+        mHudShowExtraBlocks.load(std::memory_order_relaxed),
+        mHudShowProjectedBlockName.load(std::memory_order_relaxed),
+        mHudPosition.load(std::memory_order_relaxed)
+    };
+}
+
+settings::HudPercentages StructureUiState::hudScales() const {
+    std::lock_guard lock(mHudLayoutMutex);
+    return mHudScales;
+}
+void StructureUiState::setHudScales(settings::HudPercentages const& values) {
+    std::lock_guard lock(mHudLayoutMutex);
+    mHudScales = values;
+}
+settings::HudPercentages StructureUiState::hudBackgroundOpacities() const {
+    std::lock_guard lock(mHudLayoutMutex);
+    return mHudBackgroundOpacities;
+}
+void StructureUiState::setHudBackgroundOpacities(settings::HudPercentages const& values) {
+    std::lock_guard lock(mHudLayoutMutex);
+    mHudBackgroundOpacities = values;
+}
+settings::HudPlacements StructureUiState::hudPlacements() const {
+    std::lock_guard lock(mHudLayoutMutex);
+    return mHudPlacements;
+}
+void StructureUiState::setHudPlacements(settings::HudPlacements const& placements) {
+    std::lock_guard lock(mHudLayoutMutex);
+    mHudPlacements = placements;
+}
+
+bool StructureUiState::setHudFlag(HudFlag field, bool enabled) {
+    switch (field) {
+    case HudFlag::Enabled: return updateRelaxed(mHudEnabled, enabled);
+    case HudFlag::FileName: return updateRelaxed(mHudShowFileName, enabled);
+    case HudFlag::Layer: return updateRelaxed(mHudShowLayer, enabled);
+    case HudFlag::OverallProgress: return updateRelaxed(mHudShowOverallProgress, enabled);
+    case HudFlag::Progress: return updateRelaxed(mHudShowProgress, enabled);
+    case HudFlag::WrongState: return updateRelaxed(mHudShowWrongState, enabled);
+    case HudFlag::WrongType: return updateRelaxed(mHudShowWrongType, enabled);
+    case HudFlag::ExtraBlocks: return updateRelaxed(mHudShowExtraBlocks, enabled);
+    case HudFlag::ProjectedBlockName: return updateRelaxed(mHudShowProjectedBlockName, enabled);
+    }
+    return false;
+}
+bool StructureUiState::setHudPosition(int position) {
+    bool const changed = updateRelaxed(mHudPosition, std::clamp(position, 0, 3));
+    std::lock_guard lock(mHudLayoutMutex);
+    bool const custom = mHudPlacements[0].custom;
+    mHudPlacements[0] = {};
+    return changed || custom;
+}
+
+bool StructureUiState::applyHud(HudStateSnapshot const& snapshot) {
+    bool changed = false;
+    changed = updateRelaxed(mHudEnabled, snapshot.enabled) || changed;
+    changed = updateRelaxed(mHudShowFileName, snapshot.showFileName) || changed;
+    changed = updateRelaxed(mHudShowLayer, snapshot.showLayer) || changed;
+    changed = updateRelaxed(mHudShowOverallProgress, snapshot.showOverallProgress) || changed;
+    changed = updateRelaxed(mHudShowProgress, snapshot.showProgress) || changed;
+    changed = updateRelaxed(mHudShowWrongState, snapshot.showWrongState) || changed;
+    changed = updateRelaxed(mHudShowWrongType, snapshot.showWrongType) || changed;
+    changed = updateRelaxed(mHudShowExtraBlocks, snapshot.showExtraBlocks) || changed;
+    changed = updateRelaxed(
+        mHudShowProjectedBlockName, snapshot.showProjectedBlockName
+    ) || changed;
+    changed = updateRelaxed(mHudPosition, snapshot.position) || changed;
+    return changed;
+}
+
+HotkeyBindingSnapshot StructureUiState::hotkey(std::size_t index) const {
+    auto const* storage = hotkeyStorage(index);
+    if (!storage) return {};
+    return {
+        storage->key.load(std::memory_order_relaxed),
+        storage->modifiers.load(std::memory_order_relaxed),
+        storage->capturing.load(std::memory_order_acquire)
+    };
+}
+
+HotkeyBindingSnapshot StructureUiState::inputHotkey(std::size_t index) const {
+    auto const* storage = hotkeyStorage(index);
+    if (!storage) return {};
+    return {
+        storage->key.load(std::memory_order_acquire),
+        storage->modifiers.load(std::memory_order_acquire),
+        storage->capturing.load(std::memory_order_acquire)
+    };
+}
+
+void StructureUiState::setHotkey(
+    std::size_t  index,
+    unsigned int key,
+    unsigned int modifiers
+) {
+    if (auto* storage = hotkeyStorage(index)) {
+        storage->key.store(key, std::memory_order_relaxed);
+        storage->modifiers.store(modifiers, std::memory_order_relaxed);
+    }
+}
+
+std::optional<std::size_t> StructureUiState::capturingHotkey() const {
+    // Only one hotkey can be capturing at a time (beginHotkeyCapture clears the
+    // rest), so a plain scan over every slot is sufficient and count-agnostic.
+    for (std::size_t index = 0; index < mHotkeys.size(); ++index) {
+        if (mHotkeys[index].capturing.load(std::memory_order_acquire)) return index;
+    }
+    return std::nullopt;
+}
+
+void StructureUiState::beginHotkeyCapture(std::size_t index) {
+    stopHotkeyCapture();
+    if (auto* storage = hotkeyStorage(index)) {
+        storage->capturing.store(true, std::memory_order_release);
+    }
+}
+
+void StructureUiState::stopHotkeyCapture() {
+    for (auto& hotkey : mHotkeys) hotkey.capturing.store(false, std::memory_order_release);
+}
+
+void StructureUiState::clearHotkey(std::size_t index) {
+    if (auto* storage = hotkeyStorage(index)) {
+        storage->key.store(0, std::memory_order_release);
+        storage->modifiers.store(0, std::memory_order_release);
+        storage->capturing.store(false, std::memory_order_release);
+    }
+}
+
+void StructureUiState::bindCapturedHotkey(
+    std::size_t  index,
+    unsigned int key,
+    unsigned int modifiers
+) {
+    auto* target = hotkeyStorage(index);
+    if (!target) return;
+    for (std::size_t current = 0; current < mHotkeys.size(); ++current) {
+        if (current == index) continue;
+        auto& candidate = mHotkeys[current];
+        if (candidate.key.load(std::memory_order_relaxed) == key
+            && candidate.modifiers.load(std::memory_order_relaxed) == modifiers) {
+            candidate.key.store(0, std::memory_order_relaxed);
+            candidate.modifiers.store(0, std::memory_order_relaxed);
+        }
+    }
+    target->key.store(key, std::memory_order_release);
+    target->modifiers.store(modifiers, std::memory_order_release);
+    stopHotkeyCapture();
+}
+
+void StructureUiState::resetHotkeys() {
+    for (std::size_t index = 0; index < mHotkeys.size(); ++index) {
+        mHotkeys[index].key.store(kDefaultHotkeys[index].key, std::memory_order_relaxed);
+        mHotkeys[index].modifiers.store(kDefaultHotkeys[index].modifiers, std::memory_order_relaxed);
+    }
+    mAltWheelOffsetEnabled.store(kDefaultAltWheelOffsetEnabled, std::memory_order_relaxed);
+    stopHotkeyCapture();
+}
+
+void StructureUiState::resetHotkey(std::size_t index) {
+    auto* storage = hotkeyStorage(index);
+    if (!storage) return;
+    storage->key.store(kDefaultHotkeys[index].key, std::memory_order_release);
+    storage->modifiers.store(kDefaultHotkeys[index].modifiers, std::memory_order_release);
+    storage->capturing.store(false, std::memory_order_release);
+    storage->held.store(false, std::memory_order_release);
+}
+
+void StructureUiState::setControlHeld(bool held) {
+    mControlHeld.store(held, std::memory_order_release);
+}
+void StructureUiState::setAltHeld(bool held) { mAltHeld.store(held, std::memory_order_release); }
+void StructureUiState::setShiftHeld(bool held) { mShiftHeld.store(held, std::memory_order_release); }
+
+unsigned int StructureUiState::currentHotkeyModifiers() const {
+    unsigned int modifiers{};
+    if (mControlHeld.load(std::memory_order_acquire)) modifiers |= lholo::ui::kHotkeyModifierControl;
+    if (mAltHeld.load(std::memory_order_acquire)) modifiers |= lholo::ui::kHotkeyModifierAlt;
+    if (mShiftHeld.load(std::memory_order_acquire)) modifiers |= lholo::ui::kHotkeyModifierShift;
+    return modifiers;
+}
+
+bool StructureUiState::tryPressHotkey(std::size_t index) {
+    auto* storage = hotkeyStorage(index);
+    return storage && !storage->held.exchange(true, std::memory_order_acq_rel);
+}
+
+bool StructureUiState::altHeld() const {
+    return mAltHeld.load(std::memory_order_acquire);
+}
+
+bool StructureUiState::altWheelOffsetEnabled() const {
+    return mAltWheelOffsetEnabled.load(std::memory_order_acquire);
+}
+
+bool StructureUiState::setAltWheelOffsetEnabled(bool enabled) {
+    return updateRelaxed(mAltWheelOffsetEnabled, enabled);
+}
+
+bool StructureUiState::releaseHotkeysForKey(unsigned int key, std::uint64_t now) {
+    bool consumed{};
+    for (auto& hotkey : mHotkeys) {
+        if (key == hotkey.key.load(std::memory_order_acquire)) {
+            consumed = hotkey.held.exchange(false, std::memory_order_acq_rel) || consumed;
+        }
+    }
+    if (key < mConsumeKeyReleaseUntil.size()) {
+        auto& deadline = mConsumeKeyReleaseUntil[key];
+        if (consumed) {
+            deadline.store(now + 100, std::memory_order_release);
+            return true;
+        }
+        if (now <= deadline.load(std::memory_order_acquire)) return true;
+    }
+    return false;
+}
+
+void StructureUiState::resetHotkeyState() {
+    mControlHeld.store(false, std::memory_order_release);
+    mAltHeld.store(false, std::memory_order_release);
+    mShiftHeld.store(false, std::memory_order_release);
+    for (auto& hotkey : mHotkeys) hotkey.held.store(false, std::memory_order_release);
+    for (auto& deadline : mConsumeKeyReleaseUntil) deadline.store(0, std::memory_order_release);
+}
+
+std::uint64_t StructureUiState::ignoreHotkeyUntil() const {
+    return mIgnoreHotkeyUntil.load(std::memory_order_acquire);
+}
+
+void StructureUiState::setIgnoreHotkeyUntil(std::uint64_t deadline) {
+    mIgnoreHotkeyUntil.store(deadline, std::memory_order_release);
+}
+
+void StructureUiState::queueOffsetDelta(int deltaX, int deltaY, int deltaZ) {
+    mPendingOffsetX.fetch_add(deltaX, std::memory_order_relaxed);
+    mPendingOffsetY.fetch_add(deltaY, std::memory_order_relaxed);
+    mPendingOffsetZ.fetch_add(deltaZ, std::memory_order_relaxed);
+}
+
+void StructureUiState::queueLayerDelta(int delta) {
+    if (delta > 0) mPendingLayerDelta.fetch_add(1, std::memory_order_relaxed);
+    else if (delta < 0) mPendingLayerDelta.fetch_sub(1, std::memory_order_relaxed);
+}
+
+void StructureUiState::queueLayerModeDelta(int delta) {
+    if (delta > 0) mPendingLayerModeDelta.fetch_add(1, std::memory_order_relaxed);
+    else if (delta < 0) mPendingLayerModeDelta.fetch_sub(1, std::memory_order_relaxed);
+}
+
+void StructureUiState::requestSettingsSave() {
+    mPendingSettingsSave.store(true, std::memory_order_release);
+}
+
+PendingHotkeyActions StructureUiState::consumePendingHotkeyActions() {
+    return {
+        mPendingOffsetX.exchange(0, std::memory_order_acq_rel),
+        mPendingOffsetY.exchange(0, std::memory_order_acq_rel),
+        mPendingOffsetZ.exchange(0, std::memory_order_acq_rel),
+        mPendingLayerDelta.exchange(0, std::memory_order_acq_rel),
+        mPendingSettingsSave.exchange(false, std::memory_order_acq_rel),
+        mPendingLayerModeDelta.exchange(0, std::memory_order_acq_rel)
+    };
+}
+
+bool StructureUiState::experimentalConsentGiven() const {
+    return mExperimentalConsent.load(std::memory_order_acquire);
+}
+
+void StructureUiState::setExperimentalConsentGiven(bool given) {
+    mExperimentalConsent.store(given, std::memory_order_release);
+}
+
+bool StructureUiState::writeHudEnabled() const { return mWriteHudEnabled.load(std::memory_order_acquire); }
+void StructureUiState::setWriteHudEnabled(bool enabled) { mWriteHudEnabled.store(enabled, std::memory_order_release); }
+int StructureUiState::writeHudPosition() const { return mWriteHudPosition.load(std::memory_order_acquire); }
+void StructureUiState::setWriteHudPosition(int position) { mWriteHudPosition.store(position, std::memory_order_release); }
+
+bool StructureUiState::materialHudEnabled() const {
+    return mMaterialHudEnabled.load(std::memory_order_acquire);
+}
+
+void StructureUiState::setMaterialHudEnabled(bool enabled) {
+    mMaterialHudEnabled.store(enabled, std::memory_order_release);
+}
+
+bool StructureUiState::materialHudStackConversion() const {
+    return mMaterialHudStackConversion.load(std::memory_order_acquire);
+}
+
+void StructureUiState::setMaterialHudStackConversion(bool enabled) {
+    mMaterialHudStackConversion.store(enabled, std::memory_order_release);
+}
+
+int StructureUiState::materialHudMaxItems() const {
+    return mMaterialHudMaxItems.load(std::memory_order_acquire);
+}
+
+void StructureUiState::setMaterialHudMaxItems(int count) {
+    mMaterialHudMaxItems.store(std::clamp(count, settings::kMinMaterialHudItems, settings::kMaxMaterialHudItems), std::memory_order_release);
+}
+
+int StructureUiState::materialHudPosition() const {
+    return mMaterialHudPosition.load(std::memory_order_acquire);
+}
+
+void StructureUiState::setMaterialHudPosition(int position) {
+    mMaterialHudPosition.store(std::clamp(position, 0, 3), std::memory_order_release);
+    std::lock_guard lock(mHudLayoutMutex);
+    mHudPlacements[1] = {};
+}
+
+void StructureUiState::setActionHint(i18n::Message message, std::uint64_t expiry, bool showOverMenu) {
+    std::lock_guard lock(mActionHintMutex);
+    mActionHintMessage = std::move(message);
+    mActionHintOverMenu = showOverMenu;
+    mActionHintExpiry.store(expiry, std::memory_order_release);
+}
+
+void StructureUiState::clearActionHint(i18n::TextKey expected) {
+    std::lock_guard lock(mActionHintMutex);
+    if (mActionHintMessage.key != expected) return;
+    mActionHintMessage = {};
+    mActionHintOverMenu = false;
+    mActionHintExpiry.store(0, std::memory_order_release);
+}
+
+ActionHintSnapshot StructureUiState::actionHint(std::uint64_t now, bool menuVisible) const {
+    std::lock_guard lock(mActionHintMutex);
+    auto const expiry = mActionHintExpiry.load(std::memory_order_acquire);
+    if (expiry > now && (!menuVisible || mActionHintOverMenu))
+        return {i18n::format(mActionHintMessage), expiry};
+    if (!menuVisible && mLoadingHintToken.load(std::memory_order_acquire) != 0) {
+        return {i18n::format(i18n::Message{mLoadingHintKey}), 0, true};
+    }
+    return {};
+}
+
+bool StructureUiState::actionHintActive(std::uint64_t now, bool menuVisible) const {
+    if (menuVisible) {
+        std::lock_guard lock(mActionHintMutex);
+        return mActionHintOverMenu && mActionHintExpiry.load(std::memory_order_acquire) > now;
+    }
+    return mActionHintExpiry.load(std::memory_order_acquire) > now
+        || mLoadingHintToken.load(std::memory_order_acquire) != 0;
+}
+
+std::uint64_t StructureUiState::beginLoadingHint(i18n::TextKey key) {
+    std::lock_guard lock(mActionHintMutex);
+    auto const token = ++mLoadingHintSequence;
+    mLoadingHintKey = key;
+    mLoadingHintToken.store(token, std::memory_order_release);
+    return token;
+}
+
+void StructureUiState::finishLoadingHint(std::uint64_t token) {
+    std::lock_guard lock(mActionHintMutex);
+    if (mLoadingHintToken.load(std::memory_order_acquire) == token) {
+        mLoadingHintToken.store(0, std::memory_order_release);
+    }
+}
+
+void StructureUiState::clearLoadingHint() {
+    std::lock_guard lock(mActionHintMutex);
+    mLoadingHintToken.store(0, std::memory_order_release);
+}
+
+void StructureUiState::requestMaterialList() {
+    // A loaded structure has an immutable material bill. Reopening the popup
+    // must reuse that snapshot instead of rescanning a potentially huge file.
+    if (mMaterialListReady.load(std::memory_order_acquire)) return;
+    mMaterialListRequested.store(true, std::memory_order_release);
+}
+
+bool StructureUiState::consumeMaterialListRequest() {
+    return mMaterialListRequested.exchange(false, std::memory_order_acq_rel);
+}
+
+std::optional<MaterialListSnapshot> StructureUiState::materialListSnapshotIfChanged(
+    std::optional<std::uint64_t> revision
+) const {
+    std::lock_guard lock(mMaterialMutex);
+    if (revision && *revision == mMaterialListRevision) return std::nullopt;
+    return MaterialListSnapshot{mMaterialListRevision,
+        mMaterialListReady.load(std::memory_order_acquire), mMaterialRequirements};
+}
+
+void StructureUiState::replaceMaterialRequirements(std::vector<MaterialRequirement> materials) {
+    std::lock_guard lock(mMaterialMutex);
+    mMaterialRequirements = std::move(materials);
+    mMaterialListReady.store(true, std::memory_order_release);
+    ++mMaterialListRevision;
+}
+
+void StructureUiState::updateMaterialListAvailability(std::uint64_t expectedRevision, std::vector<int> const& counts) {
+    std::lock_guard lock(mMaterialMutex);
+    if (expectedRevision != mMaterialListRevision || counts.size() != mMaterialRequirements.size()) return;
+    bool changed{};
+    for (std::size_t i = 0; i < counts.size(); ++i) {
+        auto const count = (std::max)(0, counts[i]);
+        changed = changed || mMaterialRequirements[i].available != count;
+        mMaterialRequirements[i].available = count;
+    }
+    if (changed) ++mMaterialListRevision;
+}
+
+void StructureUiState::replaceMaterialHudSnapshot(
+    std::vector<MaterialRequirement> materials,
+    std::vector<int>                 available
+) {
+    std::lock_guard lock(mMaterialMutex);
+    mMaterialHudRequirements = std::move(materials);
+    mMaterialHudAvailability = std::move(available);
+    mMaterialHudReady = true;
+}
+
+void StructureUiState::setMaterialHudAvailability(std::vector<int> counts) {
+    std::lock_guard lock(mMaterialMutex);
+    mMaterialHudAvailability = std::move(counts);
+}
+
+MaterialHudSnapshot StructureUiState::materialHudSnapshot() const {
+    std::lock_guard lock(mMaterialMutex);
+    return {mMaterialHudRequirements, mMaterialHudAvailability, mMaterialHudReady};
+}
+
+void StructureUiState::clearMaterialHud() {
+    std::lock_guard lock(mMaterialMutex);
+    mMaterialHudRequirements.clear();
+    mMaterialHudAvailability.clear();
+    mMaterialHudReady = false;
+}
+
+void StructureUiState::clearMaterials() {
+    mMaterialListRequested.store(false, std::memory_order_release);
+    std::lock_guard lock(mMaterialMutex);
+    mMaterialListReady.store(false, std::memory_order_release);
+    ++mMaterialListRevision;
+    mMaterialRequirements.clear();
+    mMaterialHudRequirements.clear();
+    mMaterialHudAvailability.clear();
+    mMaterialHudReady = false;
+}
+
+void StructureUiState::resetWorldSession() {
+    input::clearMaterialHudPageRequest();
+    mPendingOffsetX.store(0, std::memory_order_release);
+    mPendingOffsetY.store(0, std::memory_order_release);
+    mPendingOffsetZ.store(0, std::memory_order_release);
+    mPendingLayerDelta.store(0, std::memory_order_release);
+    mIgnoreHotkeyUntil.store(0, std::memory_order_release);
+    stopHotkeyCapture();
+    resetHotkeyState();
+    setActionHint(i18n::Message{}, 0);
+    clearLoadingHint();
+    clearMaterials();
+}
+
+} // namespace lholo::structure::detail

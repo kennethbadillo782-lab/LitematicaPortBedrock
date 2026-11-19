@@ -1,0 +1,16 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "Litematica Port - Realm Companion",
+    "description": "Puente de pegado y relleno para Litematica Port. API estable, sin experimentos.",
+    "uuid": "9f3e90dc-c108-4377-83f6-c54fe30fd754",
+    "version": [0, 12, 0],
+    "min_engine_version": [1, 26, 60]
+  },
+  "modules": [
+    { "type": "data", "uuid": "065a6381-c76b-4af8-b57a-c2e74c1e11cf", "version": [0, 12, 0] },
+    { "type": "script", "language": "javascript", "entry": "scripts/main.js", "uuid": "9651261f-1753-45e8-897c-ee1807a078f0", "version": [0, 12, 0] }
+  ],
+  "dependencies": [{ "module_name": "@minecraft/server", "version": "2.11.0" }, { "module_name": "@minecraft/server-ui", "version": "2.3.0" }],
+  "metadata": { "authors": ["Litematica Port Bedrock contributors"], "product_type": "addon", "license": "GPL-3.0-or-later" }
+}

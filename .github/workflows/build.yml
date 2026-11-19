@@ -1,0 +1,88 @@
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Source ref to build"
+        required: true
+        type: string
+    outputs:
+      commit:
+        value: ${{ jobs.build.outputs.commit }}
+      artifact_id:
+        value: ${{ jobs.build.outputs.artifact_id }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+      artifact_id: ${{ steps.artifact.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - id: source
+        name: Record checked-out commit
+        run: |
+          $sourceCommit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "commit=$sourceCommit" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - uses: xmake-io/github-action-setup-xmake@v1
+        # with:
+        #   xmake-version: branch@master
+
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/AppData/Local/.xmake
+          key: xmake-${{ hashFiles('xmake.lua') }}
+          restore-keys: |
+            xmake-
+
+      - name: Setup LLVM
+        uses: ZhongRuoyu/setup-llvm@v0
+        with:
+          llvm-version: 22
+
+      - run: |
+          xmake repo -u
+
+      - run: |
+          xmake f -a x64 -m release -p windows -v --target_type=client --debug_symbols=n -y
+
+      - run: |
+          xmake -v -y
+
+      - name: Run logic regressions
+        run: |
+          xmake -b LHoloLogicTests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          xmake r LHoloLogicTests
+
+      - name: Test release packaging tools
+        run: python -m unittest discover -s tools/oreui/tests
+
+      - id: artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ github.event.repository.name }}-${{ steps.source.outputs.commit }}-client-windows-x64
+          if-no-files-found: error
+          path: |
+            bin/
+            !bin/**/*.pdb

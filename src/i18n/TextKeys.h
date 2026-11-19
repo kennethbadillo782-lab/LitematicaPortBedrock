@@ -1,0 +1,564 @@
+// LHolo - Interface text keys
+//
+// Single source of truth for every user-visible interface string. The list
+// below is defined once through an X-macro and expands into both the TextKey
+// enum and a parallel table of stable string identifiers ("page.projection")
+// used by the language JSON files in src/i18n/lang/.
+//
+// Stable-key contract: the identifiers are part of the published translation
+// format. Never rename an identifier; deprecate the entry and add a new one.
+//
+// Layering: this header is a leaf. It must not include any other LHolo module,
+// nor any Minecraft/LeviLamina header.
+
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <string_view>
+
+// LHolo_TEXT_KEY(identifier, enumName, comment)
+#define LHOLO_TEXT_KEY_LIST                                                                              \
+    /* Explicit "no message". Keeps platform value 0 out of the real string                              \
+       table, so a default-constructed i18n::Message renders as nothing instead                          \
+       of picking up whichever entry happens to be declared first. Must stay the                         \
+       first entry. */                                                                                   \
+    LHOLO_TEXT_KEY("none", None, "")                                                                     \
+                                                                                                         \
+    /* Shell */                                                                                          \
+    LHOLO_TEXT_KEY("menu.close", MenuClose, "")                                                          \
+    LHOLO_TEXT_KEY("tasks.nav", TasksNav, "")                                                \
+    LHOLO_TEXT_KEY("preview.open", PreviewOpen, "")                                          \
+    LHOLO_TEXT_KEY("preview.controls", PreviewControls, "")                                  \
+    LHOLO_TEXT_KEY("preview.dimensions", PreviewDimensions, "")                              \
+    LHOLO_TEXT_KEY("preview.file", PreviewFile, "")                                          \
+    LHOLO_TEXT_KEY("preview.blocks", PreviewBlocks, "")                                      \
+    LHOLO_TEXT_KEY("preview.unavailable", PreviewUnavailable, "")                            \
+    LHOLO_TEXT_KEY("preview.failed", PreviewFailed, "")                                      \
+    LHOLO_TEXT_KEY("preview.heightLimit", PreviewHeightLimit, "")                            \
+    LHOLO_TEXT_KEY("tasks.activate", TasksActivate, "")                                                \
+    LHOLO_TEXT_KEY("tasks.close", TasksClose, "")                                                \
+    LHOLO_TEXT_KEY("tasks.loading", TasksLoading, "")                                                \
+    LHOLO_TEXT_KEY("tasks.active", TasksActive, "")                                                \
+    LHOLO_TEXT_KEY("tasks.error", TasksError, "")                                                \
+    LHOLO_TEXT_KEY("tasks.requestTooLarge", TasksRequestTooLarge, "")                            \
+    LHOLO_TEXT_KEY("tasks.noVisible", TasksNoVisible, "")                                                \
+    LHOLO_TEXT_KEY("tasks.emptyTasks", TasksEmptyTasks, "")                                              \
+    LHOLO_TEXT_KEY("tasks.name", TasksName, "")                                              \
+    LHOLO_TEXT_KEY("tasks.create", TasksCreate, "")                                          \
+    LHOLO_TEXT_KEY("tasks.addFile", TasksAddFile, "")                                        \
+    LHOLO_TEXT_KEY("tasks.show", TasksShow, "")                                              \
+    LHOLO_TEXT_KEY("tasks.hide", TasksHide, "")                                              \
+    LHOLO_TEXT_KEY("tasks.selectedFile", TasksSelectedFile, "")                              \
+    LHOLO_TEXT_KEY("tasks.currentSelection", TasksCurrentSelection, "")                      \
+    LHOLO_TEXT_KEY("tasks.path", TasksPath, "")                                              \
+    LHOLO_TEXT_KEY("tasks.emptyFiles", TasksEmptyFiles, "")                                  \
+    LHOLO_TEXT_KEY("tasks.rename", TasksRename, "")                                          \
+    LHOLO_TEXT_KEY("tasks.delete", TasksDelete, "")                                          \
+    LHOLO_TEXT_KEY("tasks.removeFile", TasksRemoveFile, "")                                  \
+    LHOLO_TEXT_KEY("tasks.layers", TasksLayers, "")                                          \
+    LHOLO_TEXT_KEY("tasks.selected", TasksSelected, "")                                      \
+    LHOLO_TEXT_KEY("tasks.hidden", TasksHidden, "")                                          \
+    LHOLO_TEXT_KEY("tasks.moveUp", TasksMoveUp, "")                                          \
+    LHOLO_TEXT_KEY("tasks.moveDown", TasksMoveDown, "")                                      \
+    LHOLO_TEXT_KEY("tasks.pathPlaceholder", TasksPathPlaceholder, "")                        \
+    LHOLO_TEXT_KEY("tasks.noSelection", TasksNoSelection, "")                                \
+    LHOLO_TEXT_KEY("tasks.createTitle", TasksCreateTitle, "")                                \
+    LHOLO_TEXT_KEY("tasks.renameTitle", TasksRenameTitle, "")                                \
+    LHOLO_TEXT_KEY("tasks.namePlaceholder", TasksNamePlaceholder, "")                        \
+    LHOLO_TEXT_KEY("tasks.confirm", TasksConfirm, "")                                        \
+    LHOLO_TEXT_KEY("tasks.deleteTaskPrompt", TasksDeleteTaskPrompt, "")                      \
+    LHOLO_TEXT_KEY("tasks.removeFilePrompt", TasksRemoveFilePrompt, "")                      \
+    LHOLO_TEXT_KEY("tasks.cancel", TasksCancel, "")                                          \
+                                                                                                         \
+    /* Navigation pages */                                                                               \
+    LHOLO_TEXT_KEY("page.projection", PageProjection, "")                                                \
+    LHOLO_TEXT_KEY("page.createStructure", PageCreateStructure, "")                                      \
+    LHOLO_TEXT_KEY("hud.tabWrite", HudTabWrite, "") \
+    LHOLO_TEXT_KEY("checkbox.writeHudEnabled", WriteHudEnabled, "") \
+    LHOLO_TEXT_KEY("hud.writeFile", HudWriteFile, "") \
+    LHOLO_TEXT_KEY("hud.writeProgress", HudWriteProgress, "") \
+    LHOLO_TEXT_KEY("page.writeWorld", PageWriteWorld, "") \
+    LHOLO_TEXT_KEY("writeWorld.mode", WriteWorldMode, "") \
+    LHOLO_TEXT_KEY("writeWorld.localScope", WriteWorldLocalScope, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandScope", WriteWorldCommandScope, "") \
+    LHOLO_TEXT_KEY("writeWorld.localMode", WriteWorldLocalMode, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandDimension", WriteWorldCommandDimension, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandNoWorld", WriteWorldCommandNoWorld, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandUnsupported", WriteWorldCommandUnsupported, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandRunning", WriteWorldCommandRunning, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandWaiting", WriteWorldCommandWaiting, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandPaused", WriteWorldCommandPaused, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandUnknown", WriteWorldCommandUnknown, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandVerify", WriteWorldCommandVerify, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandRetryLimit", WriteWorldCommandRetryLimit, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandFailed", WriteWorldCommandFailed, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandPermission", WriteWorldCommandPermission, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandSyntax", WriteWorldCommandSyntax, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandCancelled", WriteWorldCommandCancelled, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandDescription", WriteWorldCommandDescription, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandDescriptionSkipAir", WriteWorldCommandDescriptionSkipAir, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandProgress", WriteWorldCommandProgress, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandFailedSkipped", WriteWorldCommandFailedSkipped, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandTarget", WriteWorldCommandTarget, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandContinue", WriteWorldCommandContinue, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandCancel", WriteWorldCommandCancel, "") \
+    LHOLO_TEXT_KEY("writeWorld.commandMode", WriteWorldCommandMode, "") \
+    LHOLO_TEXT_KEY("writeWorld.description", WriteWorldDescription, "") \
+    LHOLO_TEXT_KEY("writeWorld.skipPlaced", WriteWorldSkipPlaced, "") \
+    LHOLO_TEXT_KEY("writeWorld.skipAir", WriteWorldSkipAir, "") \
+    LHOLO_TEXT_KEY("writeWorld.descriptionSkipAir", WriteWorldDescriptionSkipAir, "") \
+    LHOLO_TEXT_KEY("writeWorld.busy", WriteWorldBusy, "") \
+    LHOLO_TEXT_KEY("writeWorld.complete", WriteWorldComplete, "") \
+    LHOLO_TEXT_KEY("writeWorld.noLocalWorld", WriteWorldNoLocalWorld, "") \
+    LHOLO_TEXT_KEY("writeWorld.contextChanged", WriteWorldContextChanged, "") \
+    LHOLO_TEXT_KEY("writeWorld.noSelection", WriteWorldNoSelection, "") \
+    LHOLO_TEXT_KEY("writeWorld.unmappedBlocks", WriteWorldUnmappedBlocks, "") \
+    LHOLO_TEXT_KEY("writeWorld.otherDimension", WriteWorldOtherDimension, "") \
+    LHOLO_TEXT_KEY("writeWorld.chooseTask", WriteWorldChooseTask, "") \
+    LHOLO_TEXT_KEY("writeWorld.loadTask", WriteWorldLoadTask, "") \
+    LHOLO_TEXT_KEY("writeWorld.chooseFile", WriteWorldChooseFile, "") \
+    LHOLO_TEXT_KEY("writeWorld.showFile", WriteWorldShowFile, "") \
+    LHOLO_TEXT_KEY("writeWorld.regionNotLoaded", WriteWorldRegionNotLoaded, "") \
+    LHOLO_TEXT_KEY("writeWorld.heightLimit", WriteWorldHeightLimit, "") \
+    LHOLO_TEXT_KEY("writeWorld.coordinateLimit", WriteWorldCoordinateLimit, "") \
+    LHOLO_TEXT_KEY("writeWorld.failed", WriteWorldFailed, "") \
+    LHOLO_TEXT_KEY("page.transform", PageTransform, "")                                                  \
+    LHOLO_TEXT_KEY("page.render", PageRender, "")                                                        \
+    LHOLO_TEXT_KEY("page.hud", PageHud, "")                                                              \
+    LHOLO_TEXT_KEY("page.hotkeys", PageHotkeys, "")                                                      \
+    LHOLO_TEXT_KEY("page.interface", PageInterface, "")                                                  \
+    LHOLO_TEXT_KEY("page.experimental", PageExperimental, "")                                            \
+                                                                                                         \
+    /* Projection page */                                                                                \
+    LHOLO_TEXT_KEY("section.projectionFile", SectionProjectionFile, "")                                  \
+    LHOLO_TEXT_KEY("label.structurePath", LabelStructurePath, "")                                        \
+    LHOLO_TEXT_KEY("button.browse", ButtonBrowse, "")                                                    \
+    LHOLO_TEXT_KEY("button.load", ButtonLoad, "")                                                        \
+    LHOLO_TEXT_KEY("button.closeProjection", ButtonCloseProjection, "")                                  \
+    LHOLO_TEXT_KEY("material.search", MaterialSearch, "") \
+    LHOLO_TEXT_KEY("material.sort", MaterialSort, "") \
+    LHOLO_TEXT_KEY("material.sortDefault", MaterialSortDefault, "") \
+    LHOLO_TEXT_KEY("material.sortName", MaterialSortName, "") \
+    LHOLO_TEXT_KEY("material.sortMost", MaterialSortMost, "") \
+    LHOLO_TEXT_KEY("material.sortLeast", MaterialSortLeast, "") \
+    LHOLO_TEXT_KEY("material.noMatches", MaterialNoMatches, "") \
+    LHOLO_TEXT_KEY("material.stacks", MaterialStacks, "") \
+    LHOLO_TEXT_KEY("material.unavailableOnly", MaterialUnavailableOnly, "") \
+    LHOLO_TEXT_KEY("material.available", MaterialAvailable, "") \
+    LHOLO_TEXT_KEY("page.home", PageHome, "") \
+    LHOLO_TEXT_KEY("java.toolMode0", JavaToolMode0, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.toolMode1", JavaToolMode1, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.toolMode2", JavaToolMode2, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.toolMode3", JavaToolMode3, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.toolMode4", JavaToolMode4, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.toolMode5", JavaToolMode5, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.toolMode6", JavaToolMode6, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.toolMode7", JavaToolMode7, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.toolMode8", JavaToolMode8, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.moveTarget", JavaMoveTarget, "Move destination") \
+    LHOLO_TEXT_KEY("java.selectMoveTarget", JavaSelectMoveTarget, "Select move destination") \
+    LHOLO_TEXT_KEY("java.hotkey.executeOperation", JavaHotkeyExecuteOperation, "Litematica action") \
+    LHOLO_TEXT_KEY("java.hotkey.nudgeSelectionNegative", JavaHotkeyNudgeSelectionNegative, "Litematica action") \
+    LHOLO_TEXT_KEY("java.hotkey.nudgeSelectionPositive", JavaHotkeyNudgeSelectionPositive, "Litematica action") \
+    LHOLO_TEXT_KEY("java.hotkey.addSelectionBox", JavaHotkeyAddSelectionBox, "Litematica action") \
+    LHOLO_TEXT_KEY("java.hotkey.deleteSelectionBox", JavaHotkeyDeleteSelectionBox, "Litematica action") \
+    LHOLO_TEXT_KEY("java.hotkey.setAreaOrigin", JavaHotkeySetAreaOrigin, "Litematica action") \
+    LHOLO_TEXT_KEY("java.hotkey.setSelectionBoxPosition1", JavaHotkeySetSelectionPosition1, "Litematica action") \
+    LHOLO_TEXT_KEY("java.hotkey.setSelectionBoxPosition2", JavaHotkeySetSelectionPosition2, "Litematica action") \
+    LHOLO_TEXT_KEY("java.hotkey.layerModeNext", JavaHotkeyLayerModeNext, "Litematica action") \
+    LHOLO_TEXT_KEY("java.hotkey.layerModePrevious", JavaHotkeyLayerModePrevious, "Litematica action") \
+    LHOLO_TEXT_KEY("java.hotkey.selectionCornersMode", JavaHotkeySelectionCornersMode, "Litematica action") \
+    LHOLO_TEXT_KEY("java.notPorted", JavaNotPorted, "Litematica configuration") \
+    LHOLO_TEXT_KEY("java.clear", JavaClear, "Litematica configuration") \
+    LHOLO_TEXT_KEY("java.bind", JavaBind, "Bind hotkey") \
+    LHOLO_TEXT_KEY("java.execute", JavaExecute, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.cancelTask", JavaCancelTask, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.primary", JavaPrimary, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.secondary", JavaSecondary, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.grid", JavaGrid, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.gridNegative", JavaGridNegative, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.gridPositive", JavaGridPositive, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.gridStep", JavaGridStep, "Litematica tool") \
+    LHOLO_TEXT_KEY("java.placements", JavaPlacements, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.loaded", JavaLoaded, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.load", JavaLoad, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.area", JavaArea, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.areas", JavaAreas, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.selectionMode", JavaSelectionMode, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.config", JavaConfig, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.manager", JavaManager, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.tasks", JavaTasks, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.main", JavaMain, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.tool", JavaTool, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.createPlacement", JavaCreatePlacement, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.reload", JavaReload, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.unload", JavaUnload, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.configure", JavaConfigure, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.remove", JavaRemove, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.placementOn", JavaPlacementOn, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.placementOff", JavaPlacementOff, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.createChecked", JavaCreateChecked, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.search", JavaSearch, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.loadSelected", JavaLoadSelected, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.up", JavaUp, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.root", JavaRoot, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.all", JavaAll, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.verifier", JavaVerifier, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.start", JavaStart, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.stop", JavaStop, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.reset", JavaReset, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.resetIgnored", JavaResetIgnored, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.showIgnored", JavaShowIgnored, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.mismatch1", JavaMismatch1, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.mismatch2", JavaMismatch2, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.mismatch3", JavaMismatch3, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.mismatch4", JavaMismatch4, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.waitingChunks", JavaWaitingChunks, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.complete", JavaComplete, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.running", JavaRunning, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.stopped", JavaStopped, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.ignore", JavaIgnore, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.restore", JavaRestore, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.placementName", JavaPlacementName, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.unlisted", JavaUnlisted, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.showMarkers", JavaShowMarkers, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.rename", JavaRename, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.copy", JavaCopy, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.delete", JavaDelete, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.confirmDelete", JavaConfirmDelete, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.newName", JavaNewName, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.selectionModeNormal", JavaSelectionModeNormal, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.cornerModeExpand", JavaCornerModeExpand, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.originOn", JavaOriginOn, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.on", JavaOn, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.off", JavaOff, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.addRegion", JavaAddRegion, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.origin", JavaOrigin, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.saveSelection", JavaSaveSelection, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.newSelection", JavaNewSelection, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.select", JavaSelect, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.configTitle", JavaConfigTitle, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.axis", JavaAxis, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.modeNormalTitle", JavaModeNormalTitle, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.modeSimpleTitle", JavaModeSimpleTitle, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.generic", JavaGeneric, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.info", JavaInfo, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.visuals", JavaVisuals, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.colors", JavaColors, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.hotkeys", JavaHotkeys, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.layers", JavaLayers, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.selectionName", JavaSelectionName, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.boxName", JavaBoxName, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.set", JavaSet, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.cornerMode", JavaCornerMode, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.originOff", JavaOriginOff, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.corner", JavaCorner, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.player", JavaPlayer, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.save", JavaSave, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.analyze", JavaAnalyze, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.noTasks", JavaNoTasks, "Litematica UI") \
+    LHOLO_TEXT_KEY("java.saveFile", JavaSaveFile, "Litematica UI") \
+    LHOLO_TEXT_KEY("home.placements", HomePlacements, "") \
+    LHOLO_TEXT_KEY("home.transform", HomeTransform, "") \
+    LHOLO_TEXT_KEY("home.selection", HomeSelection, "") \
+    LHOLO_TEXT_KEY("home.paste", HomePaste, "") \
+    LHOLO_TEXT_KEY("home.configuration", HomeConfiguration, "") \
+    LHOLO_TEXT_KEY("tasks.duplicatePlacement", TasksDuplicatePlacement, "") \
+    LHOLO_TEXT_KEY("material.listTitle", MaterialListTitle, "")                                          \
+    LHOLO_TEXT_KEY("material.loading", MaterialLoading, "") \
+    LHOLO_TEXT_KEY("button.restoreLastProjection", ButtonRestoreLastProjection, "")                      \
+    LHOLO_TEXT_KEY("label.savedOrigin", LabelSavedOrigin, "")                                            \
+    LHOLO_TEXT_KEY("hint.noSavedProjection", HintNoSavedProjection, "")                                  \
+                                                                                                         \
+    /* Create-structure page */                                                                          \
+    LHOLO_TEXT_KEY("section.captureSource", SectionCaptureSource, "")                                    \
+    LHOLO_TEXT_KEY("capture.tabWorld", CaptureTabWorld, "")                                              \
+    LHOLO_TEXT_KEY("capture.tabCustom", CaptureTabCustom, "")                                            \
+    LHOLO_TEXT_KEY("capture.emptyDimensions", CaptureEmptyDimensions, "")                                \
+    LHOLO_TEXT_KEY("capture.emptyDimensionsFormat", CaptureEmptyDimensionsFormat, "")                    \
+    LHOLO_TEXT_KEY("capture.invalidEmptyDimensions", CaptureInvalidEmptyDimensions, "")                  \
+    LHOLO_TEXT_KEY("label.captureMode", LabelCaptureMode, "")                                            \
+    LHOLO_TEXT_KEY("combo.captureModeClient", ComboCaptureModeClient, "")                                \
+    LHOLO_TEXT_KEY("hint.captureClientOnly", HintCaptureClientOnly, "")                                  \
+    LHOLO_TEXT_KEY("section.captureSelection", SectionCaptureSelection, "")                              \
+    LHOLO_TEXT_KEY("label.capturePoint1", LabelCapturePoint1, "")                                        \
+    LHOLO_TEXT_KEY("label.capturePoint2", LabelCapturePoint2, "")                                        \
+    LHOLO_TEXT_KEY("button.usePlayerPosition", ButtonUsePlayerPosition, "")                              \
+    LHOLO_TEXT_KEY("label.notSet", LabelNotSet, "")                                                      \
+    LHOLO_TEXT_KEY("label.captureSize", LabelCaptureSize, "")                                            \
+    LHOLO_TEXT_KEY("label.captureVolume", LabelCaptureVolume, "")                                        \
+    LHOLO_TEXT_KEY("checkbox.includeEntities", CheckboxIncludeEntities, "")                              \
+    LHOLO_TEXT_KEY("button.clearSelection", ButtonClearSelection, "")                                    \
+    LHOLO_TEXT_KEY("button.exportMcstructure", ButtonExportMcstructure, "")                              \
+                                                                                                         \
+    /* Transform page */                                                                                 \
+    LHOLO_TEXT_KEY("section.transform", SectionTransform, "")                                            \
+    LHOLO_TEXT_KEY("label.rotation", LabelRotation, "")                                                  \
+    LHOLO_TEXT_KEY("label.mirror", LabelMirror, "")                                                      \
+    LHOLO_TEXT_KEY("combo.mirrorNone", ComboMirrorNone, "")                                              \
+    LHOLO_TEXT_KEY("label.offsetX", LabelOffsetX, "")                                                    \
+    LHOLO_TEXT_KEY("label.offsetY", LabelOffsetY, "")                                                    \
+    LHOLO_TEXT_KEY("label.offsetZ", LabelOffsetZ, "")                                                    \
+                                                                                                         \
+    /* Rendering page */                                                                                 \
+    LHOLO_TEXT_KEY("section.projectionStyle", SectionProjectionStyle, "")                                \
+    LHOLO_TEXT_KEY("checkbox.renderBounds", CheckboxRenderBounds, "")                                    \
+    LHOLO_TEXT_KEY("section.layerSettings", SectionLayerSettings, "")                                    \
+    LHOLO_TEXT_KEY("label.layerAxis", LabelLayerAxis, "")                                                \
+    LHOLO_TEXT_KEY("combo.layerAxisY", ComboLayerAxisY, "")                                              \
+    LHOLO_TEXT_KEY("combo.layerAxisX", ComboLayerAxisX, "")                                              \
+    LHOLO_TEXT_KEY("combo.layerAxisZ", ComboLayerAxisZ, "") \
+    LHOLO_TEXT_KEY("combo.layerAxisMaterial", ComboLayerAxisMaterial, "")                                \
+    LHOLO_TEXT_KEY("label.displayRange", LabelDisplayRange, "")                                          \
+    LHOLO_TEXT_KEY("combo.rangeAll", ComboRangeAll, "")                                                  \
+    LHOLO_TEXT_KEY("combo.rangeSingle", ComboRangeSingle, "")                                            \
+    LHOLO_TEXT_KEY("combo.rangeUpToCurrent", ComboRangeUpToCurrent, "")                                  \
+    LHOLO_TEXT_KEY("combo.rangeFromCurrent", ComboRangeFromCurrent, "")                                  \
+    LHOLO_TEXT_KEY("combo.rangeRange", ComboRangeRange, "")                                         \
+    LHOLO_TEXT_KEY("combo.materialRange", ComboMaterialRange, "")                                   \
+    LHOLO_TEXT_KEY("label.rangeStart", LabelRangeStart, "")                                         \
+    LHOLO_TEXT_KEY("label.rangeEnd", LabelRangeEnd, "")                                             \
+    LHOLO_TEXT_KEY("combo.materialAll", ComboMaterialAll, "")                                            \
+    LHOLO_TEXT_KEY("combo.materialSingle", ComboMaterialSingle, "")                                      \
+    LHOLO_TEXT_KEY("combo.materialUpToCurrent", ComboMaterialUpToCurrent, "")                            \
+    LHOLO_TEXT_KEY("combo.materialFromCurrent", ComboMaterialFromCurrent, "")                            \
+    LHOLO_TEXT_KEY("label.currentMaterial", LabelCurrentMaterial, "")                                    \
+    LHOLO_TEXT_KEY("label.currentLayer", LabelCurrentLayer, "")                                          \
+    LHOLO_TEXT_KEY("hint.materialOrder", HintMaterialOrder, "")                                          \
+    LHOLO_TEXT_KEY("hint.layerZeroBased", HintLayerZeroBased, "")                                        \
+    LHOLO_TEXT_KEY("section.correctionStyle", SectionCorrectionStyle, "")                                \
+    LHOLO_TEXT_KEY("label.correctionFill", LabelCorrectionFill, "")                                      \
+    LHOLO_TEXT_KEY("label.correctionOutline", LabelCorrectionOutline, "")                                \
+    LHOLO_TEXT_KEY("button.resetCorrectionStyle", ButtonResetCorrectionStyle, "")                        \
+    LHOLO_TEXT_KEY("section.seeThrough", SectionSeeThrough, "")                                          \
+    LHOLO_TEXT_KEY("checkbox.correctionSeeThrough", CheckboxCorrectionSeeThrough, "")                    \
+    LHOLO_TEXT_KEY("checkbox.missingSeeThrough", CheckboxMissingSeeThrough, "")                          \
+    /* Closing note on the render page, not tied to a single control. */                                 \
+    LHOLO_TEXT_KEY("hint.vibrantVisuals", HintVibrantVisuals, "")                                        \
+                                                                                                         \
+    /* HUD page */                                                                                       \
+    LHOLO_TEXT_KEY("section.hud", SectionHud, "")                                                        \
+    LHOLO_TEXT_KEY("hud.tabProjection", HudTabProjection, "")                                            \
+    LHOLO_TEXT_KEY("hud.tabMaterials", HudTabMaterials, "")                                              \
+    LHOLO_TEXT_KEY("hud.groupInfo", HudGroupInfo, "")                                                    \
+    LHOLO_TEXT_KEY("hud.groupProgress", HudGroupProgress, "")                                            \
+    LHOLO_TEXT_KEY("hud.groupErrors", HudGroupErrors, "")                                                \
+    LHOLO_TEXT_KEY("hud.layout.edit", HudLayoutEdit, "") \
+    LHOLO_TEXT_KEY("hud.layout.sample.stone", HudLayoutStone, "") \
+    LHOLO_TEXT_KEY("hud.layout.sample.planks", HudLayoutPlanks, "") \
+    LHOLO_TEXT_KEY("hud.layout.sample.glass", HudLayoutGlass, "") \
+    LHOLO_TEXT_KEY("hud.layout.done", HudLayoutDone, "") \
+    LHOLO_TEXT_KEY("hud.layout.scale", HudLayoutScale, "") \
+    LHOLO_TEXT_KEY("hud.layout.backgroundOpacity", HudLayoutBackgroundOpacity, "") \
+    LHOLO_TEXT_KEY("hud.layout.reset", HudLayoutReset, "") \
+    LHOLO_TEXT_KEY("hud.layout.resetAll", HudLayoutResetAll, "") \
+    LHOLO_TEXT_KEY("checkbox.hudEnabled", CheckboxHudEnabled, "")                                        \
+    LHOLO_TEXT_KEY("label.hudPosition", LabelHudPosition, "")                                            \
+    LHOLO_TEXT_KEY("corner.topLeft", CornerTopLeft, "")                                                  \
+    LHOLO_TEXT_KEY("corner.bottomLeft", CornerBottomLeft, "")                                            \
+    LHOLO_TEXT_KEY("corner.topRight", CornerTopRight, "")                                                \
+    LHOLO_TEXT_KEY("corner.bottomRight", CornerBottomRight, "")                                          \
+    LHOLO_TEXT_KEY("checkbox.hudFileName", CheckboxHudFileName, "")                                      \
+    LHOLO_TEXT_KEY("checkbox.hudLayer", CheckboxHudLayer, "")                                            \
+    LHOLO_TEXT_KEY("checkbox.hudOverallProgress", CheckboxHudOverallProgress, "")                        \
+    LHOLO_TEXT_KEY("checkbox.hudProgress", CheckboxHudProgress, "")                                      \
+    LHOLO_TEXT_KEY("checkbox.hudProjectedBlockName", CheckboxHudProjectedBlockName, "")                  \
+    LHOLO_TEXT_KEY("checkbox.hudWrongState", CheckboxHudWrongState, "")                                  \
+    LHOLO_TEXT_KEY("checkbox.hudWrongType", CheckboxHudWrongType, "")                                    \
+    LHOLO_TEXT_KEY("checkbox.hudExtraBlocks", CheckboxHudExtraBlocks, "")                                \
+    LHOLO_TEXT_KEY("checkbox.materialHudEnabled", CheckboxMaterialHudEnabled, "")                        \
+    LHOLO_TEXT_KEY("checkbox.materialHudStackConversion", CheckboxMaterialHudStackConversion, "")        \
+    LHOLO_TEXT_KEY("label.materialHudMaxItems", LabelMaterialHudMaxItems, "")                             \
+    LHOLO_TEXT_KEY("label.materialHudPosition", LabelMaterialHudPosition, "")                            \
+                                                                                                         \
+    /* Hotkeys page */                                                                                   \
+    LHOLO_TEXT_KEY("hotkeys.group.menu", HotkeysGroupMenu, "")                                           \
+    LHOLO_TEXT_KEY("hotkeys.group.movement", HotkeysGroupMovement, "")                                   \
+    LHOLO_TEXT_KEY("hotkeys.group.layers", HotkeysGroupLayers, "")                                       \
+    LHOLO_TEXT_KEY("hotkeys.group.materials", HotkeysGroupMaterials, "")                                 \
+    LHOLO_TEXT_KEY("section.hotkeys", SectionHotkeys, "")                                                \
+    LHOLO_TEXT_KEY("hint.pressKeys", HintPressKeys, "")                                                  \
+    LHOLO_TEXT_KEY("button.resetHotkey", ButtonResetHotkey, "")                                          \
+    LHOLO_TEXT_KEY("button.clearHotkey", ButtonClearHotkey, "")                                          \
+    LHOLO_TEXT_KEY("button.resetAllHotkeys", ButtonResetAllHotkeys, "")                                  \
+    LHOLO_TEXT_KEY("hint.chatCommand", HintChatCommand, "")                                              \
+    /* Fixed-gesture input on the hotkeys page: the trigger key is fixed to                              \
+       Alt, so it is a switch instead of a rebindable slot. */                                           \
+    LHOLO_TEXT_KEY("checkbox.altWheelOffset", CheckboxAltWheelOffset, "")                                \
+    LHOLO_TEXT_KEY("hotkey.openMenu", HotkeyOpenMenu, "")                                                \
+    /* Move rows are ordered like HotkeyId's move slots: left, right, forward,                           \
+       backward, up, down. */                                                                            \
+    LHOLO_TEXT_KEY("hotkey.moveLeft", HotkeyMoveLeft, "")                                                \
+    LHOLO_TEXT_KEY("hotkey.moveRight", HotkeyMoveRight, "")                                              \
+    LHOLO_TEXT_KEY("hotkey.moveForward", HotkeyMoveForward, "")                                          \
+    LHOLO_TEXT_KEY("hotkey.moveBackward", HotkeyMoveBackward, "")                                        \
+    LHOLO_TEXT_KEY("hotkey.moveUp", HotkeyMoveUp, "")                                                    \
+    LHOLO_TEXT_KEY("hotkey.moveDown", HotkeyMoveDown, "")                                                \
+    LHOLO_TEXT_KEY("hotkey.layerIncrease", HotkeyLayerIncrease, "")                                      \
+    LHOLO_TEXT_KEY("hotkey.layerDecrease", HotkeyLayerDecrease, "")                                      \
+    LHOLO_TEXT_KEY("key.notSet", KeyNotSet, "")                                                          \
+    LHOLO_TEXT_KEY("key.mouseMiddle", KeyMouseMiddle, "")                                                \
+    LHOLO_TEXT_KEY("key.mouseSide1", KeyMouseSide1, "")                                                  \
+    LHOLO_TEXT_KEY("key.mouseSide2", KeyMouseSide2, "")                                                  \
+                                                                                                         \
+    /* Experimental page */                                                                              \
+    LHOLO_TEXT_KEY("section.assistedPlacement", SectionAssistedPlacement, "")                            \
+    LHOLO_TEXT_KEY("button.experimentalInfoOpen", ButtonExperimentalInfoOpen, "")                        \
+    LHOLO_TEXT_KEY("button.experimentalInfoView", ButtonExperimentalInfoView, "")                        \
+    LHOLO_TEXT_KEY("modal.titleExperimental", ModalTitleExperimental, "")                                \
+    LHOLO_TEXT_KEY("experimental.warningIntro", ExperimentalWarningIntro, "")                            \
+    LHOLO_TEXT_KEY("experimental.warningAntiCheat", ExperimentalWarningAntiCheat, "")                    \
+    LHOLO_TEXT_KEY("experimental.warningAllowed", ExperimentalWarningAllowed, "")                        \
+    LHOLO_TEXT_KEY("experimental.warningConsequence", ExperimentalWarningConsequence, "")                \
+    LHOLO_TEXT_KEY("experimental.warningResponsibility", ExperimentalWarningResponsibility, "")          \
+    LHOLO_TEXT_KEY("experimental.warningManualSafe", ExperimentalWarningManualSafe, "")                  \
+    LHOLO_TEXT_KEY("button.consentEnable", ButtonConsentEnable, "")                                      \
+    LHOLO_TEXT_KEY("button.cancel", ButtonCancel, "")                                                    \
+    LHOLO_TEXT_KEY("button.close", ButtonClose, "")                                                      \
+    LHOLO_TEXT_KEY("checkbox.manualPlace", CheckboxManualPlace, "")                                      \
+    LHOLO_TEXT_KEY("checkbox.easyPlace", CheckboxEasyPlace, "")                                          \
+    LHOLO_TEXT_KEY("checkbox.rangePlace", CheckboxRangePlace, "")                                        \
+    LHOLO_TEXT_KEY("mode.manual", ModeManual, "")                                                        \
+    LHOLO_TEXT_KEY("mode.easy", ModeEasy, "")                                                            \
+    LHOLO_TEXT_KEY("mode.range", ModeRange, "")                                                          \
+    LHOLO_TEXT_KEY("hint.modeEnabled", HintModeEnabled, "")                                              \
+    LHOLO_TEXT_KEY("hint.assistedDisabledByConsent", HintAssistedDisabledByConsent, "")                  \
+    LHOLO_TEXT_KEY("hint.assistedDisabled", HintAssistedDisabled, "")                                    \
+    LHOLO_TEXT_KEY("label.placementRadius", LabelPlacementRadius, "")                                    \
+    LHOLO_TEXT_KEY("label.autoPlacementCooldown", LabelAutoPlacementCooldown, "")                        \
+                                                                                                         \
+    /* Interface settings page */                                                                        \
+    LHOLO_TEXT_KEY("section.interfaceSettings", SectionInterfaceSettings, "")                            \
+    LHOLO_TEXT_KEY("label.uiScale", LabelUiScale, "")                                                    \
+    LHOLO_TEXT_KEY("label.language", LabelLanguage, "")                                                  \
+    LHOLO_TEXT_KEY("label.followGameLanguage", LabelFollowGameLanguage, "")                              \
+                                                                                                         \
+    /* Material list popup */                                                                            \
+    LHOLO_TEXT_KEY("material.water", MaterialWater, "")                                                  \
+    LHOLO_TEXT_KEY("material.lava", MaterialLava, "")                                                    \
+    LHOLO_TEXT_KEY("status.notLoaded", StatusNotLoaded, "")                                              \
+    LHOLO_TEXT_KEY("label.materialSummary", LabelMaterialSummary, "")                                    \
+    LHOLO_TEXT_KEY("hint.noPlaceableMaterials", HintNoPlaceableMaterials, "")                            \
+    LHOLO_TEXT_KEY("column.item", ColumnItem, "")                                                        \
+    LHOLO_TEXT_KEY("column.identifier", ColumnIdentifier, "")                                            \
+    LHOLO_TEXT_KEY("column.total", ColumnTotal, "")                                                      \
+                                                                                                         \
+    /* Projection HUD */                                                                                 \
+    LHOLO_TEXT_KEY("hud.fileName", HudFileName, "")                                                      \
+    LHOLO_TEXT_KEY("hud.materialFilterAll", HudMaterialFilterAll, "")                                    \
+    LHOLO_TEXT_KEY("hud.materialFilterSingle", HudMaterialFilterSingle, "")                              \
+    LHOLO_TEXT_KEY("hud.materialFilterUpTo", HudMaterialFilterUpTo, "")                                  \
+    LHOLO_TEXT_KEY("hud.materialFilterRange", HudMaterialFilterRange, "")                                \
+    LHOLO_TEXT_KEY("hud.rangeAll", HudRangeAll, "")                                                      \
+    LHOLO_TEXT_KEY("hud.currentLayer", HudCurrentLayer, "")                                              \
+    LHOLO_TEXT_KEY("hud.rangeFromZero", HudRangeFromZero, "")                                            \
+    LHOLO_TEXT_KEY("hud.rangeBetween", HudRangeBetween, "")                                              \
+    LHOLO_TEXT_KEY("hud.tool.areaNormal", HudToolAreaNormal, "")                                    \
+    LHOLO_TEXT_KEY("hud.tool.areaSimple", HudToolAreaSimple, "")                                    \
+    LHOLO_TEXT_KEY("hud.tool.origin", HudToolOrigin, "")                                            \
+    LHOLO_TEXT_KEY("hud.tool.boxCount", HudToolBoxCount, "")                                        \
+    LHOLO_TEXT_KEY("hud.tool.subRegion", HudToolSubRegion, "")                                      \
+    LHOLO_TEXT_KEY("hud.tool.dimensions", HudToolDimensions, "")                                    \
+    LHOLO_TEXT_KEY("hud.tool.cornerMode", HudToolCornerMode, "")                                    \
+    LHOLO_TEXT_KEY("hud.tool.originAuto", HudToolOriginAuto, "")                                    \
+    LHOLO_TEXT_KEY("hud.tool.originManual", HudToolOriginManual, "")                                \
+    LHOLO_TEXT_KEY("hud.tool.cornersName", HudToolCornersName, "")                                  \
+    LHOLO_TEXT_KEY("hud.tool.expandName", HudToolExpandName, "")                                    \
+    LHOLO_TEXT_KEY("hud.tool.mode", HudToolMode, "")                                                \
+    LHOLO_TEXT_KEY("hud.tool.placement", HudToolPlacement, "")                                      \
+    LHOLO_TEXT_KEY("hud.tool.none", HudToolNone, "")                                                \
+    LHOLO_TEXT_KEY("hud.tool.block1", HudToolBlock1, "")                                            \
+    LHOLO_TEXT_KEY("hud.tool.block2", HudToolBlock2, "")                                            \
+    LHOLO_TEXT_KEY("hud.tool.mode0", HudToolMode0, "")                                              \
+    LHOLO_TEXT_KEY("hud.tool.mode1", HudToolMode1, "")                                              \
+    LHOLO_TEXT_KEY("hud.tool.mode2", HudToolMode2, "")                                              \
+    LHOLO_TEXT_KEY("hud.tool.mode3", HudToolMode3, "")                                              \
+    LHOLO_TEXT_KEY("hud.tool.mode4", HudToolMode4, "")                                              \
+    LHOLO_TEXT_KEY("hud.tool.mode5", HudToolMode5, "")                                              \
+    LHOLO_TEXT_KEY("hud.tool.mode6", HudToolMode6, "")                                              \
+    LHOLO_TEXT_KEY("hud.tool.mode7", HudToolMode7, "")                                              \
+    LHOLO_TEXT_KEY("hud.tool.mode8", HudToolMode8, "")                                              \
+    LHOLO_TEXT_KEY("hud.overallProgress", HudOverallProgress, "")                                        \
+    LHOLO_TEXT_KEY("hud.buildProgress", HudBuildProgress, "")                                            \
+    LHOLO_TEXT_KEY("hud.wrongState", HudWrongState, "")                                                  \
+    LHOLO_TEXT_KEY("hud.wrongType", HudWrongType, "")                                                    \
+    LHOLO_TEXT_KEY("hud.extraBlocks", HudExtraBlocks, "")                                                \
+    LHOLO_TEXT_KEY("hud.projectedBlock", HudProjectedBlock, "")                                          \
+    LHOLO_TEXT_KEY("hud.placementMode", HudPlacementMode, "")                                            \
+                                                                                                         \
+    /* Material HUD */                                                                                   \
+    LHOLO_TEXT_KEY("hotkey.materialHudPreviousPage", HotkeyMaterialHudPreviousPage, "")                    \
+    LHOLO_TEXT_KEY("hotkey.materialHudNextPage", HotkeyMaterialHudNextPage, "")                            \
+    LHOLO_TEXT_KEY("materialHud.page", MaterialHudPage, "")                                              \
+    LHOLO_TEXT_KEY("materialHud.title", MaterialHudTitle, "")                                            \
+    LHOLO_TEXT_KEY("materialHud.scanning", MaterialHudScanning, "")                                      \
+    LHOLO_TEXT_KEY("materialHud.complete", MaterialHudComplete, "")                                      \
+                                                                                                         \
+    /* File dialogs (Win32 common dialog filters) */                                                     \
+    LHOLO_TEXT_KEY("dialog.filterProjection", DialogFilterProjection, "")                                \
+    LHOLO_TEXT_KEY("dialog.filterBedrock", DialogFilterBedrock, "")                                      \
+    LHOLO_TEXT_KEY("dialog.filterLitematica", DialogFilterLitematica, "")                                \
+    LHOLO_TEXT_KEY("dialog.filterAll", DialogFilterAll, "")                                              \
+                                                                                                         \
+    /* Session status messages (stored as i18n::Message, rendered at the boundary) */                    \
+    LHOLO_TEXT_KEY("status.loading", StatusLoading, "")                                                  \
+    LHOLO_TEXT_KEY("status.pathEmpty", StatusPathEmpty, "")                                              \
+    LHOLO_TEXT_KEY("status.loadFailed", StatusLoadFailed, "")                                            \
+    LHOLO_TEXT_KEY("status.restoreFailed", StatusRestoreFailed, "")                                      \
+    LHOLO_TEXT_KEY("status.restoredPending", StatusRestoredPending, "")                                  \
+    LHOLO_TEXT_KEY("status.loaded", StatusLoaded, "")                                                    \
+    LHOLO_TEXT_KEY("status.worldExited", StatusWorldExited, "")                                          \
+    LHOLO_TEXT_KEY("status.projectionClosed", StatusProjectionClosed, "")                                \
+    LHOLO_TEXT_KEY("captureStatus.needTwoPoints", CaptureStatusNeedTwoPoints, "")                        \
+    LHOLO_TEXT_KEY("captureStatus.selectionReady", CaptureStatusSelectionReady, "")                      \
+    LHOLO_TEXT_KEY("captureStatus.needOtherPoint", CaptureStatusNeedOtherPoint, "")                      \
+    LHOLO_TEXT_KEY("captureStatus.noWorld", CaptureStatusNoWorld, "")                                    \
+    LHOLO_TEXT_KEY("captureStatus.singleplayerUnsupported", CaptureStatusSingleplayerUnsupported, "")    \
+    LHOLO_TEXT_KEY("captureStatus.needBothPoints", CaptureStatusNeedBothPoints, "")                      \
+    LHOLO_TEXT_KEY("captureStatus.regionNotLoaded", CaptureStatusRegionNotLoaded, "")                    \
+    LHOLO_TEXT_KEY("captureStatus.sizeLimit", CaptureStatusSizeLimit, "") \
+    LHOLO_TEXT_KEY("captureStatus.heightLimit", CaptureStatusHeightLimit, "") \
+    LHOLO_TEXT_KEY("captureStatus.templateFailed", CaptureStatusTemplateFailed, "")                      \
+    LHOLO_TEXT_KEY("captureStatus.writeFailed", CaptureStatusWriteFailed, "")                            \
+    LHOLO_TEXT_KEY("captureStatus.exported", CaptureStatusExported, "")                                  \
+    LHOLO_TEXT_KEY("captureStatus.point1Recorded", CaptureStatusPoint1Recorded, "")                      \
+    LHOLO_TEXT_KEY("captureStatus.point2Recorded", CaptureStatusPoint2Recorded, "")                      \
+                                                                                                         \
+    /* Transient action hints */                                                                         \
+    LHOLO_TEXT_KEY("actionHint.projectionSuspended", ActionHintProjectionSuspended, "")                  \
+    LHOLO_TEXT_KEY("actionHint.projectionRestored", ActionHintProjectionRestored, "")                    \
+    LHOLO_TEXT_KEY("actionHint.selectedFileOtherDimension", ActionHintSelectedFileOtherDimension, "")      \
+    LHOLO_TEXT_KEY("actionHint.worldExited", ActionHintWorldExited, "")                                  \
+    LHOLO_TEXT_KEY("actionHint.noMatchingItem", ActionHintNoMatchingItem, "")                            \
+    LHOLO_TEXT_KEY("actionHint.manualModeBlocked", ActionHintManualModeBlocked, "")                      \
+    LHOLO_TEXT_KEY("oreui.previewActionNotice", OreUiPreviewActionNotice, "")                              \
+    LHOLO_TEXT_KEY("oreui.browsing", OreUiBrowsing, "")                                                    \
+    LHOLO_TEXT_KEY("oreui.applySelection", OreUiApplySelection, "") \
+    LHOLO_TEXT_KEY("oreui.captureChanged", OreUiCaptureChanged, "") \
+    LHOLO_TEXT_KEY("oreui.invalidCoordinates", OreUiInvalidCoordinates, "") \
+    LHOLO_TEXT_KEY("oreui.captureBusy", OreUiCaptureBusy, "") \
+    LHOLO_TEXT_KEY("oreui.saveFailed", OreUiSaveFailed, "") \
+    LHOLO_TEXT_KEY("oreui.browseFailed", OreUiBrowseFailed, "")
+
+namespace lholo::i18n {
+
+enum class TextKey : std::uint16_t {
+#define LHOLO_TEXT_KEY(identifier, enumName, comment) enumName,
+    LHOLO_TEXT_KEY_LIST
+#undef LHOLO_TEXT_KEY
+        Count,
+};
+
+inline constexpr std::size_t kTextKeyCount = static_cast<std::size_t>(TextKey::Count);
+
+// Stable string identifiers, parallel to the TextKey enum values. The embedded
+// JSON language files address entries through these identifiers.
+inline constexpr std::array<std::string_view, kTextKeyCount> kTextKeyIds{{
+#define LHOLO_TEXT_KEY(identifier, enumName, comment) identifier,
+    LHOLO_TEXT_KEY_LIST
+#undef LHOLO_TEXT_KEY
+}};
+
+} // namespace lholo::i18n

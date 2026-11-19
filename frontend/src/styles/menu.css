@@ -1,0 +1,342 @@
+@font-face { font-family: LHoloSans; src: url('/hbui/fonts/NotoSansSC-Regular-a4317c614d07055b56ed.otf'); }
+/* Native divs inherit column flex; rows must be explicit. */
+.lholo-backdrop { position:absolute; top:0; left:0; width:100vw; height:100vh; align-items:center; justify-content:center; background-color:rgba(0,0,0,0.28); font-family:LHoloSans,sans-serif; color:#ededed; }
+/* Shared frame dimensions: the material list matches the main menu. */
+.lholo-menu, .lholo-material-modal { box-sizing:border-box; width:93vw; max-width:62rem; height:72vh; max-height:35.2rem; min-height:0; flex-shrink:0; }
+.lholo-menu { padding:1.25rem; border-radius:0.6rem; background-color:#121212; border:0.06rem solid #303030; }
+.lholo-menu-header { flex-direction:row; flex-shrink:0; align-items:center; justify-content:space-between; padding-bottom:0.75rem; border-bottom:0.06rem solid #303030; }
+.lholo-brand { font-size:1.25rem; line-height:1.5; }
+/* Build tasks */
+.lholo-tasks-page { box-sizing:border-box; width:100%; flex-shrink:0; }
+
+.lholo-task-control-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.9rem; }
+.lholo-task-control-row .lholo-select { min-width:10rem; width:15rem; max-width:100%; margin-right:0.5rem; }
+.lholo-task-control-secondary { flex-direction:row; align-items:center; margin-left:auto; }
+.lholo-task-control-secondary > .lholo-button { background-color:transparent; color:#a8a8a8; margin-left:0.15rem; }
+.lholo-task-control-secondary > .lholo-button.lholo-control-hovered { background-color:#282828; color:#ededed; }
+.lholo-task-control-secondary > .lholo-button.lholo-control-pressed { background-color:#383838; }
+.lholo-task-control-secondary > .lholo-button.lholo-control-disabled { color:#666666; }
+.lholo-task-section-title { flex-direction:row; align-items:baseline; font-size:1.05rem; font-weight:600; line-height:1.4; color:#ededed; margin-top:1.25rem; padding-bottom:0.45rem; border-bottom:0.06rem solid #303030; }
+.lholo-task-error { display:flex; flex-direction:column; overflow-wrap:break-word; }
+.lholo-task-error-heading, .lholo-task-error-message { display:block; }
+
+/* Layer list */
+.lholo-tasks-layer-list { flex-direction:column; margin-top:0.65rem; border-radius:0.3rem; overflow:hidden; border:0.06rem solid #303030; background-color:#1b1b1b; }
+.lholo-tasks-layer-row { box-sizing:border-box; flex-direction:row; align-items:center; height:2.55rem; min-height:2.55rem; padding:0 0.7rem; border-bottom:0.06rem solid #2a2a2a; background-color:transparent; transition:background-color 140ms ease; }
+.lholo-tasks-layer-row:hover { background-color:#222222; }
+.lholo-tasks-layer-row.is-selected { background-color:#252525; }
+.lholo-tasks-layer-row.is-selected:hover { background-color:#2a2a2a; }
+.lholo-tasks-layer-num { width:1.5rem; margin:0 0.55rem 0 0.25rem; flex-shrink:0; align-items:center; font-size:0.82rem; color:#ffffff; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.lholo-tasks-eye-btn { width:1.85rem; height:1.85rem; padding:0; flex-shrink:0; background-color:transparent !important; border:none !important; border-radius:0.25rem; justify-content:center; align-items:center; }
+.lholo-tasks-eye-btn.lholo-control-hovered { background-color:rgba(255,255,255,0.08) !important; }
+.lholo-tasks-eye-btn.lholo-control-pressed { background-color:rgba(255,255,255,0.15) !important; }
+.lholo-tasks-eye-btn.lholo-control-focused { border:none !important; box-shadow:inset 0 0 0 0.06rem rgba(255,255,255,0.3) !important; }
+.lholo-tasks-eye-btn .lholo-button-label { display:none; }
+.lholo-tasks-eye-btn .lholo-button-icon { width:1.2rem; height:1.2rem; display:flex; align-items:center; justify-content:center; }
+.lholo-tasks-eye-btn .lholo-button-icon svg { width:100%; height:100%; }
+.lholo-tasks-eye-btn.is-visible .lholo-button-icon { color:#ededed; }
+.lholo-tasks-eye-btn.is-hidden .lholo-button-icon { color:#8b8b8b; }
+.lholo-tasks-layer-name { flex:1 1 0; min-width:0; flex-direction:row; align-items:center; height:100%; cursor:pointer; }
+.lholo-tasks-layer-title { display:block; width:100%; min-width:0; font-size:0.94rem; color:#ededed; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lholo-tasks-layer-row.is-selected .lholo-tasks-layer-title { color:#ffffff; font-weight:600; }
+.lholo-tasks-layer-row.is-hidden .lholo-tasks-layer-title { color:#a0a0a0; }
+.lholo-tasks-layer-actions { flex-direction:row; align-items:center; flex-shrink:0; margin-left:0.6rem; }
+.lholo-button.lholo-tasks-preview-btn { height:1.75rem; padding:0 0.65rem; margin-right:0.3rem; }
+.lholo-tasks-preview-btn .lholo-button-label { font-size:0.9rem; }
+.lholo-button.lholo-tasks-arrow-btn { box-sizing:border-box; width:1.85rem; height:1.85rem; padding:0; margin-left:0.15rem; background-color:transparent; border:none; border-radius:0.25rem; justify-content:center; align-items:center; }
+.lholo-button.lholo-tasks-arrow-btn.lholo-control-hovered { background-color:#383838; }
+.lholo-button.lholo-tasks-arrow-btn.lholo-control-pressed { background-color:#464646; }
+.lholo-tasks-arrow-btn.lholo-control-focused { border:0.08rem solid #ededed; }
+.lholo-tasks-arrow-btn .lholo-button-label { display:none; }
+.lholo-tasks-arrow-btn .lholo-button-icon { width:1rem; height:1rem; color:#bdbdbd; display:flex; align-items:center; justify-content:center; }
+.lholo-tasks-arrow-btn .lholo-button-icon svg { width:100%; height:100%; }
+.lholo-tasks-arrow-btn.lholo-control-disabled .lholo-button-icon { color:#555555; }
+.lholo-button.lholo-tasks-delete-btn { margin-left:0.6rem; }
+.lholo-button.lholo-tasks-delete-btn.lholo-control-hovered { background-color:#3d2222; }
+.lholo-tasks-delete-btn.lholo-control-hovered .lholo-button-icon { color:#ff7875; }
+.lholo-button.lholo-tasks-delete-btn.lholo-control-pressed { background-color:#542222; }
+.lholo-tasks-delete-btn.lholo-control-pressed .lholo-button-icon { color:#ff9c9c; }
+.lholo-button.lholo-tasks-add-row { width:100%; height:2.45rem; justify-content:flex-start; background-color:transparent; color:#b0b0b0; border-radius:0; padding:0 0.9rem; }
+.lholo-button.lholo-tasks-add-row.lholo-control-hovered { background-color:#282828; color:#ededed; }
+.lholo-button.lholo-tasks-add-row.lholo-control-pressed { background-color:#333333; }
+.lholo-tasks-add-row .lholo-button-icon { margin-right:0.5rem; }
+
+/* 选中文件检查器 */
+.lholo-tasks-file-box { margin-top:0.55rem; }
+.lholo-tasks-file-box .lholo-file-row { margin-bottom:0.4rem; }
+.lholo-menu-body { flex:1; min-height:0; flex-direction:row; overflow:hidden; padding-top:0.7rem; }
+.lholo-navigation { width:11rem; flex-shrink:0; min-height:0; overflow:hidden; padding-right:0.8rem; }
+.lholo-content-viewport { flex:1; min-width:0; min-height:0; overflow:hidden; }
+.lholo-navigation > div, .lholo-content-viewport > div { min-height:0; }
+.lholo-content { box-sizing:border-box; width:100%; flex-shrink:0; padding:0.15rem 1rem 1.25rem; }
+.lholo-section-title { font-size:1.2rem; font-weight:600; line-height:1.5; padding-bottom:0.65rem; border-bottom:0.06rem solid #303030; }
+.lholo-status { font-size:1rem; line-height:1.5; margin:1rem 0; }
+.lholo-muted { color:#909090; font-size:0.9rem; line-height:1.5; margin-top:0.4rem; }
+/* Gameface divs are column flex: keep label/punctuation in one text node. */
+.lholo-selected-file-context { display:flex; flex-direction:row; align-items:baseline; min-width:0; margin-top:0.4rem; margin-bottom:0.6rem; color:#909090; font-size:0.9rem; line-height:1.5; }
+.lholo-selected-file-label { flex-shrink:0; white-space:nowrap; margin-right:0.45rem; }
+.lholo-selected-file-name { min-width:0; flex-shrink:1; overflow-wrap:break-word; }
+.lholo-selected-file-context.lholo-task-file-heading { margin-top:1.25rem; margin-bottom:0; padding-bottom:0.45rem; border-bottom:0.06rem solid #303030; }
+.lholo-file-row, .lholo-action-row { flex-direction:row; align-items:center; }
+.lholo-file-row > .lholo-button { margin-left:0.65rem; }
+.lholo-action-row { margin-top:1rem; flex-wrap:wrap; }
+.lholo-action-row > .lholo-button { margin-right:0.65rem; margin-bottom:0.4rem; }
+.lholo-notice { color:#b6cde3; font-size:1rem; line-height:1.5; margin-top:1rem; }
+/* Shared control size: 2.2rem high, 1rem text; navigation has its own size. */
+.lholo-button { position:relative; flex-direction:row; flex-shrink:0; align-items:center; justify-content:center; height:2.2rem; padding:0 0.8rem; background-color:#282828; border-radius:0.25rem; }
+.lholo-button-label { font-size:1rem; line-height:1.5; flex-shrink:0; }
+.lholo-button.lholo-control-hovered { background-color:#383838; }
+.lholo-button.lholo-control-focused { border:0.08rem solid #ededed; }
+.lholo-button.lholo-control-pressed { background-color:#464646; }
+.lholo-hud-header { flex-direction:row; align-items:center; justify-content:space-between; flex-wrap:wrap; padding-bottom:0.65rem; border-bottom:0.06rem solid #303030; }
+.lholo-hud-title { font-size:1.2rem; font-weight:600; line-height:1.5; }
+.lholo-hud-header > .lholo-button { margin-left:0.65rem; }
+.lholo-tabs { position:relative; flex-direction:row; align-items:center; margin-top:0.8rem; border-bottom:0.06rem solid #303030; }
+.lholo-tab { height:2.4rem; padding:0 0.9rem; background-color:transparent; border-radius:0; border-bottom:0.12rem solid transparent; color:#a0a0a0; transition:background-color 150ms ease,color 180ms ease; }
+.lholo-tab.lholo-control-hovered { background-color:#242424; color:#ededed; }
+.lholo-tab.lholo-control-pressed { background-color:#303030; }
+.lholo-tab.is-selected { color:#ffffff; }
+.lholo-tab.is-selected.lholo-control-hovered { background-color:#242424; }
+.lholo-tab-indicator { position:absolute; left:0; bottom:0; height:0.12rem; z-index:1; pointer-events:none; background-color:#0f82f2; transition:transform 320ms cubic-bezier(0.4,0,0.2,1),width 320ms cubic-bezier(0.4,0,0.2,1); }
+.lholo-tab-content { padding-top:0.7rem; }
+.lholo-hud-master { padding-bottom:0.65rem; border-bottom:0.06rem solid #303030; }
+.lholo-hud-columns { flex-direction:row; flex-wrap:wrap; margin-top:0.9rem; }
+.lholo-hud-column { box-sizing:border-box; flex:1 1 16rem; min-width:16rem; }
+.lholo-hud-column:first-child { padding-right:1.3rem; }
+.lholo-hud-group + .lholo-hud-group { margin-top:0.75rem; }
+.lholo-hud-group-title { color:#a0a0a0; font-size:0.9rem; line-height:1.5; margin-bottom:0.2rem; }
+.lholo-hud-option { min-height:2.2rem; }
+.lholo-material-hud-row { flex-direction:row; align-items:center; font-size:1rem; line-height:1.5; }
+.lholo-material-hud-label { flex:1; min-width:0; margin-right:0.8rem; font-size:1rem; line-height:1.5; overflow-wrap:break-word; }
+.lholo-material-hud-row.lholo-setting-row > .lholo-stepper { min-width:0; }
+/* Keep one indicator mounted so interrupted transitions continue in place.
+   Only its accent restarts the stretch; 2.9rem matches MenuNavigation's stride. */
+.lholo-navigation-list { position:relative; flex-shrink:0; }
+.lholo-navigation-indicator, .lholo-navigation-item { height:2.6rem; }
+.lholo-navigation-indicator { position:absolute; top:0; left:0; width:0.2rem; z-index:1; pointer-events:none; transition:transform 320ms cubic-bezier(0.4,0,0.2,1); }
+.lholo-navigation-accent { position:absolute; top:50%; left:0; width:0.2rem; height:1.1rem; border-radius:0.1rem; background-color:#0f82f2; transform:translateY(-50%); animation:lholo-navigation-accent-stretch 320ms ease-in-out; }
+@keyframes lholo-navigation-accent-stretch { 0%,100% { transform:translateY(-50%) scaleY(1); } 40% { transform:translateY(-50%) scaleY(1.8); } }
+.lholo-navigation-item { width:100%; padding:0 0.85rem; justify-content:flex-start; background-color:transparent; margin-bottom:0.3rem; border-radius:0.2rem; color:#909090; transition:background-color 150ms ease,color 180ms ease,transform 150ms ease; }
+.lholo-navigation-item .lholo-button-label { font-size:1rem; line-height:1.4; }
+.lholo-button-icon svg { width:100%; height:100%; }
+.lholo-navigation-item.lholo-control-hovered { background-color:rgba(255,255,255,0.045); color:#ededed; }
+.lholo-navigation-item.is-selected { background-color:#303030; color:#ffffff; }
+.lholo-navigation-item.is-selected .lholo-button-label { font-weight:600; }
+.lholo-navigation-item.lholo-control-focused { border:none; box-shadow:inset 0 0 0 0.06rem rgba(255,255,255,0.35); }
+.lholo-navigation-item.lholo-control-pressed { background-color:rgba(255,255,255,0.075); transform:scale(0.985); }
+.lholo-button-indicator { display:none; }
+@keyframes lholo-page-enter { from { opacity:0; transform:translateY(0.25rem); } to { opacity:1; transform:translateY(0); } }
+.lholo-content { animation:lholo-page-enter 170ms ease-out; }
+@media (prefers-reduced-motion:reduce) {
+  .lholo-navigation-indicator, .lholo-navigation-item, .lholo-tab, .lholo-tab-indicator { transition:none; }
+  .lholo-navigation-accent { animation:none; }
+  .lholo-content { animation:none; }
+}
+.lholo-loading { position:absolute; top:1rem; left:1rem; flex-direction:row; align-items:center; color:white; }
+
+.lholo-control-disabled { opacity:0.5; }
+
+.lholo-capture-point-title { font-size:1rem; line-height:1.5; min-width:2.25rem; margin-right:0.6rem; margin-bottom:0.35rem; }
+/* Gameface: keep XYZ nowrap with length-based bases; only the outer action may wrap. */
+.lholo-coordinate-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.3rem; }
+.lholo-coordinate-row > .lholo-input-shell { width:12rem; margin-right:0.6rem; margin-bottom:0.35rem; }
+.lholo-coordinate-row > .lholo-button { margin-bottom:0.35rem; }
+.lholo-size-fields { margin-top:0.65rem; }
+.lholo-size-fields .lholo-capture-point-title { min-width:1rem; }
+.lholo-size-fields input.lholo-text-input::placeholder { color:#909090; }
+.lholo-input-shell { width:5.6rem; height:2.2rem; min-height:0; flex-shrink:0; border-radius:0.25rem; background-color:#242424; }
+.lholo-input-shell input.lholo-text-input { width:100%; flex:1; border:none; border-radius:0.25rem; background-color:transparent; min-width:0; min-height:0; height:2.2rem; padding:0.25rem 0.55rem; font-family:LHoloSans,sans-serif; font-size:1rem; line-height:1.5; text-shadow:none; color:#ededed; }
+.lholo-capture-entities { margin-top:1rem; }
+
+/* Neutral frames and actions, blue for state. */
+.lholo-mode-row { flex-direction:row; align-items:center; font-size:1rem; margin-top:1rem; margin-bottom:0.6rem; }
+.lholo-mode-value { justify-content:center; min-height:2.2rem; padding:0.4rem 0.9rem; margin-left:0.7rem; border-radius:0.25rem; background-color:#242424; }
+.lholo-input-shell { flex-direction:row; align-items:center; }
+.lholo-input-shell.lholo-control-hovered { background-color:#2f2f2f; }
+.lholo-input-shell.lholo-control-focused, .lholo-input-shell.is-editing { border:0.08rem solid #ededed; }
+.lholo-checkbox { flex-direction:row; align-items:center; align-self:flex-start; max-width:100%; min-height:2.2rem; padding:0.15rem 0; }
+.lholo-checkbox-box { width:1.2rem; height:1.2rem; flex-shrink:0; align-items:center; justify-content:center; border:0.09rem solid #5a5a5a; border-radius:0.32rem; background-color:#1c1c1c; }
+.lholo-checkbox-label { min-width:0; flex-shrink:1; overflow-wrap:break-word; margin-left:0.65rem; font-size:1rem; line-height:1.5; }
+.lholo-checkbox.lholo-control-hovered .lholo-checkbox-box { background-color:#272727; border-color:#7a7a7a; }
+.lholo-checkbox.lholo-control-pressed .lholo-checkbox-box { background-color:#303030; border-color:#4f4f4f; }
+.lholo-checkbox.is-checked .lholo-checkbox-box { background-color:#0f82f2; border-color:#0f82f2; }
+.lholo-checkbox.is-checked.lholo-control-hovered .lholo-checkbox-box { background-color:#2892f7; border-color:#2892f7; }
+.lholo-checkbox.is-checked.lholo-control-pressed .lholo-checkbox-box { background-color:#006cbe; border-color:#006cbe; }
+.lholo-checkbox.lholo-control-focused .lholo-checkbox-box { border-color:#ededed; }
+
+/* Keep the native scroll rail measurable, but hide it without taking input. */
+.lholo-hidden-scrollbar { opacity:0; pointer-events:none; }
+
+.lholo-transform-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.65rem; }
+.lholo-transform-label { width:7rem; flex-shrink:0; margin-right:0.6rem; font-size:1rem; line-height:1.5; }
+.lholo-transform-divider { border-bottom:0.06rem solid #303030; margin-top:1rem; }
+.lholo-select { position:relative; min-width:7.5rem; flex-shrink:0; }
+.lholo-select-trigger { justify-content:space-between; }
+.lholo-select-arrow { font-size:0.7rem; margin-left:0.75rem; }
+.lholo-select-options { position:absolute; top:100%; left:0; z-index:30; min-width:100%; padding:0.2rem; margin-top:0.2rem; background-color:#242424; border:0.06rem solid #3b3b3b; border-radius:0.25rem; }
+.lholo-select-option { height:2.2rem; justify-content:flex-start; padding:0 0.75rem; background-color:transparent; }
+.lholo-select-option.is-selected { background-color:#333333; }
+/* World writing uses the existing controls with a single foreground colour. */
+.lholo-write-world-page { width:100%; min-width:0; flex-shrink:0; color:#ededed; }
+.lholo-write-world-page .lholo-muted,
+.lholo-write-world-page .lholo-selected-file-context { color:#ededed; }
+.lholo-write-world-page .lholo-control-disabled { opacity:1; }
+.lholo-write-world-page .lholo-select-options { box-sizing:border-box; width:100%; min-width:100%; left:0; right:auto; }
+.lholo-write-world-page .lholo-select-option .lholo-button-label { white-space:nowrap; }
+.lholo-write-file { margin-top:0.45rem; }
+.lholo-write-file .lholo-selected-file-context { margin-top:0; margin-bottom:0; font-size:1rem; }
+.lholo-write-mode-group { margin-top:0.65rem; }
+.lholo-write-world-page .lholo-write-scope { margin-top:0.35rem; }
+.lholo-write-options { margin-top:1rem; }
+.lholo-write-option + .lholo-write-option { margin-top:0.5rem; }
+.lholo-write-world-page .lholo-write-range { margin-top:1rem; }
+.lholo-write-world-page > .lholo-action-row { margin-top:0.9rem; }
+
+.lholo-stepper { flex-direction:row; align-items:center; flex-shrink:0; }
+.lholo-stepper-button { width:2.2rem; padding:0; }
+.lholo-stepper-value { min-width:3.2rem; margin:0 0.3rem; }
+.lholo-stepper-value > .lholo-input-shell { width:100%; }
+.lholo-stepper-value .lholo-text-input { text-align:center; }
+
+.lholo-render-section { margin-top:1.15rem; padding-top:0.25rem; padding-bottom:0; border-bottom:none; font-size:1.05rem; }
+.lholo-render-check { margin-top:0.5rem; }
+.lholo-layer-hint { width:100%; font-size:0.85rem; margin-top:0.35rem; margin-left:0; overflow-wrap:break-word; }
+.lholo-opacity-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.65rem; }
+.lholo-opacity-field { width:4.6rem; max-width:100%; flex-shrink:0; }
+.lholo-opacity-field > .lholo-input-shell { width:4.6rem; }
+.lholo-opacity-label { font-size:1rem; line-height:1.5; }
+
+/* Settings share a label/control column; small numbers keep compact inputs. */
+.lholo-setting-row { min-height:2.4rem; margin-top:0.55rem; }
+.lholo-setting-row > .lholo-transform-label, .lholo-setting-row > .lholo-interface-label, .lholo-setting-row > .lholo-experimental-label, .lholo-setting-row > .lholo-opacity-label { width:55%; flex:0 1 55%; min-width:10rem; max-width:22rem; margin-right:1rem; overflow-wrap:break-word; }
+.lholo-setting-row > .lholo-select { width:11rem; min-width:11rem; max-width:100%; }
+.lholo-setting-row > .lholo-select-compact { width:6rem; min-width:6rem; }
+.lholo-setting-row > .lholo-stepper { min-width:11rem; justify-content:flex-start; }
+.lholo-vibrant-hint { margin-top:1.1rem; }
+
+
+.lholo-hotkey-list { margin-top:0.4rem; }
+.lholo-hotkey-group + .lholo-hotkey-group { margin-top:1.2rem; padding-top:0.9rem; border-top:0.06rem solid #2b2b2b; }
+.lholo-hotkey-group-title { color:#a0a0a0; font-size:0.95rem; line-height:1.5; margin-bottom:0.45rem; }
+.lholo-hotkey-gesture { margin-top:0.65rem; }
+.lholo-hotkey-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.55rem; }
+.lholo-hotkey-label { width:8.5rem; flex-shrink:0; margin-right:0.8rem; font-size:1rem; line-height:1.5; }
+.lholo-hotkey-actions { flex-direction:row; align-items:center; flex-wrap:wrap; }
+.lholo-hotkey-actions > .lholo-button { margin-right:0.5rem; }
+.lholo-hotkey-bind { min-width:11rem; }
+.lholo-hotkey-bind.is-capturing { border:0.08rem solid #0078d6; background-color:#1f3242; }
+
+.lholo-interface-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.65rem; }
+.lholo-interface-label { width:9.5rem; flex-shrink:0; margin-right:0.6rem; font-size:1rem; line-height:1.5; }
+
+.lholo-danger-button { background-color:#b83338; }
+.lholo-danger-button.lholo-control-hovered { background-color:#d94247; }
+.lholo-danger-button.lholo-control-pressed { background-color:#9e292e; }
+.lholo-experimental-row { flex-direction:row; align-items:center; flex-wrap:wrap; margin-top:0.65rem; }
+.lholo-experimental-label { width:16.8rem; flex-shrink:0; margin-right:0.6rem; font-size:1rem; line-height:1.5; }
+
+.lholo-modal-backdrop { position:fixed; top:0; left:0; width:100vw; height:100vh; z-index:60; align-items:center; justify-content:center; background-color:rgba(0,0,0,0.62); }
+.lholo-modal { box-sizing:border-box; width:42rem; max-width:86vw; max-height:86vh; min-height:0; padding:1.25rem; overflow:hidden; border-radius:0.5rem; border:0.06rem solid #3d3d40; background-color:#1d1d1d; }
+.lholo-modal-title { flex-shrink:0; font-size:1.3rem; line-height:1.5; }
+.lholo-modal-body-viewport { flex:1; min-height:0; overflow:hidden; }
+.lholo-modal-body-viewport > div { min-height:0; }
+.lholo-modal-body { margin-top:0.4rem; }
+.lholo-modal-paragraph { font-size:1.05rem; line-height:1.55; margin-top:0.55rem; color:#e0e0e0; }
+.lholo-modal > .lholo-action-row, .lholo-modal > .lholo-transform-divider { flex-shrink:0; }
+
+.lholo-modal-input-group { box-sizing:border-box; width:100%; margin:1.15rem 0 0.85rem; }
+.lholo-modal-input-label { width:100%; flex-shrink:0; white-space:nowrap; font-size:0.95rem; color:#b0b0b0; margin-bottom:0.5rem; font-weight:500; }
+
+/* Full width task inputs */
+.lholo-input-shell.lholo-input-full,
+.lholo-input-shell.lholo-modal-input {
+  box-sizing:border-box;
+  width:100% !important;
+  max-width:100%;
+  height:2.4rem;
+  min-height:2.4rem;
+  background-color:#242424;
+  border:0.06rem solid #383838;
+  border-radius:0.25rem;
+  padding:0 0.4rem;
+  transition:border-color 140ms ease, background-color 140ms ease;
+}
+.lholo-input-shell.lholo-input-full.lholo-control-hovered,
+.lholo-input-shell.lholo-modal-input.lholo-control-hovered {
+  border-color:#505050;
+  background-color:#2a2a2a;
+}
+.lholo-input-shell.lholo-input-full.lholo-control-focused,
+.lholo-input-shell.lholo-input-full.is-editing,
+.lholo-input-shell.lholo-modal-input.lholo-control-focused,
+.lholo-input-shell.lholo-modal-input.is-editing {
+  border-color:#ededed;
+  background-color:#202020;
+}
+.lholo-input-shell.lholo-input-full input.lholo-text-input,
+.lholo-input-shell.lholo-modal-input input.lholo-text-input {
+  box-sizing:border-box;
+  width:100%;
+  height:100%;
+  font-size:1rem;
+  color:#ededed;
+  padding:0.2rem 0.5rem;
+  background-color:transparent;
+}
+.lholo-input-shell.lholo-input-full input.lholo-text-input::placeholder,
+.lholo-input-shell.lholo-modal-input input.lholo-text-input::placeholder {
+  color:#606060;
+}
+
+/* Material list uses the same neutral surfaces and type scale as the menu. */
+.lholo-material-modal { padding:1.25rem; border-radius:0.6rem; border:0.06rem solid #303030; background-color:#151515; }
+.lholo-material-modal-header { flex-direction:row; flex-shrink:0; align-items:center; justify-content:space-between; padding-bottom:0.75rem; border-bottom:0.06rem solid #2b2b2b; }
+.lholo-material-title { font-size:1.35rem; font-weight:600; line-height:1.5; }
+.lholo-material-summary { flex-shrink:0; font-size:0.95rem; line-height:1.5; color:#a0a0a0; margin:0.85rem 0; }
+.lholo-material-empty { margin:1rem 0; }
+.lholo-material-table { flex:1; min-height:0; border:0.06rem solid #2c2c2c; border-radius:0.35rem; overflow:hidden; background-color:#181818; }
+.lholo-material-table-header { flex-direction:row; flex-shrink:0; align-items:center; min-height:2.35rem; padding:0.45rem 0.85rem; background-color:#222222; border-bottom:0.06rem solid #303030; color:#a0a0a0; font-size:0.9rem; line-height:1.5; }
+.lholo-material-table-viewport { flex:1; min-height:0; overflow:hidden; }
+.lholo-material-table-viewport > div { min-height:0; }
+.lholo-material-table-body { flex-shrink:0; }
+.lholo-material-table-row { flex-direction:row; flex-shrink:0; align-items:center; min-height:2.65rem; padding:0.45rem 0.85rem; border-bottom:0.06rem solid #252525; font-size:1rem; line-height:1.5; }
+.lholo-material-table-row:last-child { border-bottom:none; }
+.lholo-material-col-item { width:15rem; min-width:15rem; max-width:15rem; flex:0 0 15rem; padding-right:0.85rem; overflow-wrap:break-word; }
+.lholo-material-col-id { flex:1 1 0; min-width:0; padding-right:0.85rem; overflow-wrap:break-word; }
+.lholo-material-table-row .lholo-material-col-id { font-size:0.88rem; line-height:1.5; color:#858585; }
+.lholo-material-col-total { width:7rem; min-width:7rem; flex:0 0 7rem; text-align:right; align-items:flex-end; font-variant-numeric:tabular-nums; font-size:1.02rem; }
+
+/* Narrow previews retain the same controls, with deliberate label wrapping. */
+@media (max-width:800px) {
+  .lholo-navigation { width:9.5rem; padding-right:0.6rem; }
+  .lholo-navigation-item { padding:0 0.6rem; }
+  .lholo-navigation-item .lholo-button-label { font-size:0.9rem; }
+  .lholo-content { padding-left:0.6rem; padding-right:0.6rem; }
+  .lholo-hud-column { flex-basis:100%; min-width:0; }
+  .lholo-hud-column:first-child { padding-right:0; }
+  .lholo-hotkey-label { width:100%; margin-right:0; margin-bottom:0.3rem; }
+  .lholo-hotkey-actions { max-width:100%; }
+  .lholo-hotkey-bind { min-width:0; max-width:100%; }
+  .lholo-hotkey-bind .lholo-button-label { flex-shrink:1; overflow-wrap:break-word; }
+}
+@media (max-width:640px) {
+  .lholo-setting-row > .lholo-transform-label, .lholo-setting-row > .lholo-interface-label, .lholo-setting-row > .lholo-experimental-label, .lholo-setting-row > .lholo-opacity-label { flex:none; width:100%; min-width:0; margin-right:0; margin-bottom:0.3rem; }
+  .lholo-setting-row > .lholo-select { min-width:0; }
+  .lholo-setting-row > .lholo-stepper { min-width:0; }
+}
+
+.lholo-material-table-row .lholo-material-col-item { flex-direction:row; align-items:center; }
+.lholo-material-icon { width:1.6rem; height:1.6rem; min-width:1.6rem; min-height:1.6rem; flex-shrink:0; margin-right:0.55rem; align-items:center; justify-content:center; }
+.lholo-material-name { flex:1; min-width:0; overflow-wrap:break-word; }
+.lholo-material-icon-empty { width:0.45rem; height:0.45rem; border:0.06rem solid #505050; border-radius:0.1rem; }
+
+.lholo-material-tools { flex-direction:row; flex-wrap:wrap; flex-shrink:0; align-items:center; gap:0.6rem; margin-bottom:0.75rem; }
+.lholo-material-tools .lholo-input-shell { flex:1 1 12rem; width:12rem; min-width:8rem; }
+.lholo-material-tools input.lholo-text-input::placeholder { color:#909090; }
+
+.lholo-material-col-available { width:5rem; min-width:5rem; flex:0 0 5rem; text-align:right; align-items:flex-end; padding-right:0.7rem; font-variant-numeric:tabular-nums; }
+
+.lholo-home-columns { flex-direction:row; flex-wrap:wrap; gap:1.25rem; margin:1rem 0; align-items:flex-start; }
+.lholo-home-column { flex:1 1 12rem; min-width:12rem; }
+.lholo-home-column > .lholo-button { width:100%; margin-bottom:0.25rem; border-radius:0; justify-content:flex-start; }
+.lholo-home-gap { height:1.3rem; flex-shrink:0; }

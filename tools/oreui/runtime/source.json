@@ -1,0 +1,9 @@
+{
+  "gameVersion": "1.26.60.05",
+  "archive": "1.26.60.05.zip",
+  "archiveSha256": "53aff0cd215d0fd09409add03fd2898e2fc7dc8f3127fc4dd4dbd1be89184205",
+  "files": {
+    "gameplay.html": "7e58d5cf68c9ae4bc13639d81a7f4c42c5cdb496b37005e507db011082f488ce",
+    "gameplay-6de8e340eddced55490b.js": "9e7efe423b6cc8a1c1fa92756bd181675cffa51a4728bce386b0081cad1bb979"
+  }
+}

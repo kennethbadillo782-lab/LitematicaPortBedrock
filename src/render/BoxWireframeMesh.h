@@ -1,0 +1,51 @@
+// LHolo - Local-space box geometry; callers own transforms and mesh lifetime.
+#pragma once
+
+#include <array>
+#include <memory>
+#include <span>
+#include <string_view>
+#include "mc/deps/core/math/Vec3.h"
+
+class Tessellator;
+namespace mce { class Mesh; }
+
+namespace lholo::render {
+
+struct BoxWireframeBounds {
+    Vec3 minimum, maximum;
+};
+
+inline std::array<Vec3, 24> boxWireframeVertices(Vec3 const& minimum, Vec3 const& maximum) {
+    auto const x0 = minimum.x, y0 = minimum.y, z0 = minimum.z;
+    auto const x1 = maximum.x, y1 = maximum.y, z1 = maximum.z;
+    return {{
+        {x0,y0,z0}, {x1,y0,z0}, {x1,y0,z0}, {x1,y1,z0},
+        {x1,y1,z0}, {x0,y1,z0}, {x0,y1,z0}, {x0,y0,z0},
+        {x0,y0,z1}, {x1,y0,z1}, {x1,y0,z1}, {x1,y1,z1},
+        {x1,y1,z1}, {x0,y1,z1}, {x0,y1,z1}, {x0,y0,z1},
+        {x0,y0,z0}, {x0,y0,z1}, {x1,y0,z0}, {x1,y0,z1},
+        {x1,y1,z0}, {x1,y1,z1}, {x0,y1,z0}, {x0,y1,z1}
+    }};
+}
+
+// Neutral vertex color; the selection material receives the box's color at
+// submission via ScopedShaderColor. UVs always sample the white texture center.
+// Called only on the render thread; section workers never build/upload this mesh.
+std::unique_ptr<mce::Mesh> buildBoxWireframeMesh(
+    Tessellator& tessellator, Vec3 const& minimum, Vec3 const& maximum,
+    std::string_view debugName
+);
+
+// Independent boxes share one line-list upload/draw; no enclosing union box.
+// Line list from consecutive vertex pairs (each pair is one segment).
+std::unique_ptr<mce::Mesh> buildLineListMesh(
+    Tessellator& tessellator, std::span<Vec3 const> vertices, std::string_view debugName
+);
+
+std::unique_ptr<mce::Mesh> buildBoxWireframesMesh(
+    Tessellator& tessellator, std::span<BoxWireframeBounds const> boxes,
+    std::string_view debugName
+);
+
+} // namespace lholo::render

@@ -1,0 +1,54 @@
+{
+  "format_version": 3,
+  "format_uuid": "289f771f-2c9a-4d73-9f3f-8492495a924d",
+  "tooth": "github.com/kennethbadillo782-lab/LitematicaPortBedrock",
+  "version": "26.60.1",
+  "info": {
+    "name": "LitematicaPortBedrock",
+    "description": "适用于 Minecraft Bedrock Windows 的客户端投影模组 / Client-side Schematic mod for Minecraft Bedrock on Windows",
+    "tags": [
+      "platform:levilamina",
+      "type:mod"
+    ]
+  },
+  "variants": [
+    {
+      "label": "client",
+      "platform": "win-x64",
+      "dependencies": {
+        "github.com/LiteLDev/LeviLamina#client": "26.60.*"
+      },
+      "assets": [
+        {
+          "type": "zip",
+          "urls": [
+            "https://{{tooth}}/releases/download/v{{version}}/LHolo-client-windows-x64.zip"
+          ],
+          "placements": [
+            {
+              "type": "dir",
+              "src": "LHolo/",
+              "dest": "mods/LHolo/"
+            }
+          ]
+        }
+      ],
+      "preserve_files": [
+        "mods/LHolo/config/config.json",
+        "mods/LHolo/config/config.json.legacy.bak",
+        "mods/LHolo/data/tasks.json"
+      ],
+      "remove_files": [],
+      "scripts": {
+        "pre_install": [],
+        "install": [],
+        "post_install": [],
+        "pre_pack": [],
+        "post_pack": [],
+        "pre_uninstall": [],
+        "uninstall": [],
+        "post_uninstall": []
+      }
+    }
+  ]
+}

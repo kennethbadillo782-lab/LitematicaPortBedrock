@@ -1,0 +1,1114 @@
+// LHolo logic tests: pure projection rules and progress publication.
+// Run with: xmake r LHoloLogicTests
+
+#include <cstdio>
+#include <cctype>
+#include <fstream>
+#include <sstream>
+#include <string_view>
+
+#include "block/BlockPlacementRules.h"
+#include "i18n/Message.h"
+#include "i18n/Translator.h"
+#include "input/ViewMoveBasis.h"
+#include "input/HotkeyContext.h"
+#include "oreui/MenuContextPolicy.h"
+#include "place/PlacementState.h"
+#include "projection/core/ProjectionRules.h"
+#include "projection/runtime/ProjectionProgress.h"
+#include "settings/SettingsStore.h"
+#include "structure/StructureSession.h"
+#include "structure/StructureUiState.h"
+#include "structure/java_to_bedrock/JavaBlockEntityToBedrock.h"
+#include "ui/HotkeyFormat.h"
+
+#include <Windows.h>
+
+int runProjectionCullingTests();
+int runProjectionDrawCacheTests();
+int runProjectionTransparentOrderTests();
+int runProjectionBiomeRefreshTests();
+int runCorrectionStateStoreTests();
+int runProjectionNeighborSnapshotTests();
+int runCorrectionSchedulingTests();
+int runCorrectionAirScanTests();
+int runCorrectionBulkEventTests();
+int runStructureLoadOriginTests();
+int runOverlayRenderingTests();
+int runStructureFilePickerTests();
+int runCaptureActionsTests();
+int runSelectionInteractionTests();
+int runJavaConfigTests();
+int runJavaConfigActionsTests();
+int runTransformActionsTests();
+int runRenderSettingsTests();
+int runSettingsStoreTests();
+int runSettingsActionsTests();
+int runCaptureFacetLifetimeTests();
+int runNativeHudTests();
+int runTaskTests();
+int runIndependentTaskFilesTests();
+int runTaskProjectionViewTests();
+int runProjectionRaycastTests();
+int runTaskActionsTests();
+int runStructurePreviewTests();
+int runStructureReadQueueTests();
+int runStructureWriteTests();
+int runCommandWriteTests();
+int runLocalWriteQueueTests();
+int runMaterialCountsTests();
+int runStructureStorageTests();
+int runBannerCorrectionTests();
+int runStairShapeComparisonTests();
+int runMcstructureInputTests();
+int runVerifierComparisonTests();
+int runLayerRangeTests();
+int runJavaBlockEntityExportTests();
+void benchmarkProjectionDrawCache();
+
+namespace {
+
+int gChecks = 0;
+int gFailures = 0;
+
+#define LHOLO_CHECK(cond)                                     \
+    do {                                                      \
+        ++gChecks;                                            \
+        if (!(cond)) {                                        \
+            ++gFailures;                                      \
+            std::fprintf(stderr, "FAIL %s:%d: %s\n",          \
+                __FILE__, __LINE__, #cond);                   \
+        }                                                     \
+    } while (false)
+
+using namespace lholo::projection::detail;
+using lholo::structure::LoadedStructure;
+
+// Exercise the real restoration path when a test needs an installed structure.
+// Keep fixture setup out of the production session API.
+void replaceLoadedForTest(lholo::structure::detail::StructureSession& session,
+                          std::shared_ptr<LoadedStructure> loaded, std::string path,
+                          lholo::i18n::Message status) {
+    lholo::structure::detail::SavedProjectionSnapshot saved;
+    saved.structurePath = std::move(path);
+    saved.transform = session.transform();
+    auto const request = session.beginFileLoad({});
+    session.completeRestoreLoad(request, std::move(loaded), saved, std::move(status));
+}
+
+bool expectBlockPos(BlockPos const& pos, int x, int y, int z) {
+    return pos.x == x && pos.y == y && pos.z == z;
+}
+
+void testLayoutRules() {
+    LHOLO_CHECK(isVanillaSaplingType("minecraft:oak_sapling"));
+    LHOLO_CHECK(isVanillaSaplingType("minecraft:dark_oak_sapling"));
+    LHOLO_CHECK(isVanillaSaplingType("minecraft:bamboo_sapling"));
+    LHOLO_CHECK(!isVanillaSaplingType("minecraft:oak_log"));
+    LHOLO_CHECK(!isVanillaSaplingType("minecraft:flower_pot"));
+    LHOLO_CHECK(!isVanillaSaplingType("example:oak_sapling"));
+
+    LHOLO_CHECK(getProjectionMirror(0) == Mirror::None);
+    LHOLO_CHECK(getProjectionMirror(1) == Mirror::Z);
+    LHOLO_CHECK(getProjectionMirror(2) == Mirror::X);
+    LHOLO_CHECK(getProjectionMirror(9) == Mirror::None);
+
+    LHOLO_CHECK(getProjectionRotation(0) == Rotation::None);
+    LHOLO_CHECK(getProjectionRotation(1) == Rotation::Clockwise90);
+    LHOLO_CHECK(getProjectionRotation(2) == Rotation::Clockwise180);
+    LHOLO_CHECK(getProjectionRotation(3) == Rotation::CounterClockwise90);
+    LHOLO_CHECK(getProjectionRotation(4) == Rotation::None);
+    LHOLO_CHECK(getProjectionRotation(5) == Rotation::Clockwise90);
+    LHOLO_CHECK(getProjectionRotation(-1) == Rotation::CounterClockwise90);
+
+    LoadedStructure loaded;
+    loaded.sizeX = 4;
+    loaded.sizeY = 3;
+    loaded.sizeZ = 5;
+    LoadedStructure::RenderBlock const entry{1, 2, 3, nullptr, nullptr, nullptr};
+
+    LHOLO_CHECK(expectBlockPos(transformStructurePosition(entry, loaded, 0, 0), 1, 2, 3));
+    LHOLO_CHECK(expectBlockPos(transformStructurePosition(entry, loaded, 1, 0), 2, 2, 3));
+    LHOLO_CHECK(expectBlockPos(transformStructurePosition(entry, loaded, 2, 0), 1, 2, 1));
+    LHOLO_CHECK(expectBlockPos(transformStructurePosition(entry, loaded, 0, 1), 1, 2, 1));
+    LHOLO_CHECK(expectBlockPos(transformStructurePosition(entry, loaded, 0, 2), 2, 2, 1));
+    LHOLO_CHECK(expectBlockPos(transformStructurePosition(entry, loaded, 0, 3), 3, 2, 2));
+    LHOLO_CHECK(expectBlockPos(transformStructurePosition(entry, loaded, 1, 1), 1, 2, 2));
+
+    for (int mirror = 0; mirror <= 2; ++mirror) {
+        for (int rotation = 0; rotation < 4; ++rotation) {
+            for (int x = 0; x < loaded.sizeX; ++x) {
+                for (int z = 0; z < loaded.sizeZ; ++z) {
+                    BlockPos const local{x, 1, z};
+                    auto const transformed = transformStructurePosition(
+                        local, loaded, mirror, rotation
+                    );
+                    auto const restored = inverseTransformStructurePosition(
+                        transformed, loaded, mirror, rotation
+                    );
+                    LHOLO_CHECK(expectBlockPos(restored, x, 1, z));
+                }
+            }
+        }
+    }
+
+    loaded.regions = {
+        {0, 0, 0, 2, 3, 2},
+        {3, 0, 3, 1, 1, 2},
+    };
+    LHOLO_CHECK(isStructureCellCovered(loaded, BlockPos{1, 2, 1}));
+    LHOLO_CHECK(isStructureCellCovered(loaded, BlockPos{3, 0, 4}));
+    LHOLO_CHECK(!isStructureCellCovered(loaded, BlockPos{2, 0, 2}));
+    LHOLO_CHECK(!isStructureCellCovered(loaded, BlockPos{4, 0, 4}));
+
+    using lholo::structure::LayerAxis;
+    using lholo::structure::LayerDisplayMode;
+    LHOLO_CHECK(lholo::structure::layerAxisFromInt(-1) == LayerAxis::Y);
+    LHOLO_CHECK(lholo::structure::layerAxisFromInt(99) == LayerAxis::Z);
+    LHOLO_CHECK(lholo::structure::layerDisplayModeFromInt(-1) == LayerDisplayMode::All);
+    LHOLO_CHECK(lholo::structure::layerDisplayModeFromInt(99) == LayerDisplayMode::Range);
+    LHOLO_CHECK(lholo::structure::toInt(LayerAxis::Material) == 2);
+    LHOLO_CHECK(lholo::structure::toInt(LayerDisplayMode::FromCurrent) == 3);
+    LHOLO_CHECK(isLayerVisible(3, LayerDisplayMode::All, 0));
+    LHOLO_CHECK(!isLayerVisible(3, LayerDisplayMode::Single, 2));
+    LHOLO_CHECK(isLayerVisible(2, LayerDisplayMode::Single, 2));
+    LHOLO_CHECK(isLayerVisible(2, LayerDisplayMode::UpToCurrent, 3));
+    LHOLO_CHECK(!isLayerVisible(4, LayerDisplayMode::UpToCurrent, 3));
+    LHOLO_CHECK(isLayerVisible(4, LayerDisplayMode::FromCurrent, 3));
+    LHOLO_CHECK(!isLayerVisible(2, LayerDisplayMode::FromCurrent, 3));
+    LHOLO_CHECK(isLayerVisible(0, LayerDisplayMode::All, 0, 2, -1, LayerAxis::Material));
+    LHOLO_CHECK(isLayerVisible(0, LayerDisplayMode::Single, 2, 2, -1, LayerAxis::Material));
+    LHOLO_CHECK(!isLayerVisible(0, LayerDisplayMode::Single, 1, 2, -1, LayerAxis::Material));
+    LHOLO_CHECK(isLayerVisible(0, LayerDisplayMode::UpToCurrent, 2, 1, 3, LayerAxis::Material));
+    LHOLO_CHECK(!isLayerVisible(0, LayerDisplayMode::UpToCurrent, 2, 3, 4, LayerAxis::Material));
+    LHOLO_CHECK(isLayerVisible(0, LayerDisplayMode::FromCurrent, 3, -1, 3, LayerAxis::Material));
+    LHOLO_CHECK(!isLayerVisible(0, LayerDisplayMode::FromCurrent, 2, 1, 1, LayerAxis::Material));
+    LHOLO_CHECK(isLayerVisible(0, LayerDisplayMode::All, 0, -1, -1, LayerAxis::Material));
+    LHOLO_CHECK(!isLayerVisible(0, LayerDisplayMode::Single, 0, -1, -1, LayerAxis::Material));
+
+    LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerOpaque) == RenderBucket::Opaque);
+    LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerSeasonsOpaque) == RenderBucket::Opaque);
+    LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerBlend) == RenderBucket::Blend);
+    LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerBlendToOpaque) == RenderBucket::Blend);
+    LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerAlphatestSingleSide) == RenderBucket::AlphaOneSided);
+    LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerAlphatest) == RenderBucket::Alpha);
+    LHOLO_CHECK(renderBucketFor(BlockRenderLayer::RenderlayerDoubleSided) == RenderBucket::Alpha);
+}
+
+void testProgress() {
+    initializePublishedBuildProgress(100);
+    auto progress = getPublishedBuildProgress();
+    LHOLO_CHECK(progress.total == 100);
+    LHOLO_CHECK(progress.visibleTotal == 100);
+    LHOLO_CHECK(progress.placed == 0);
+
+    publishPlacedProgress(120);
+    progress = getPublishedBuildProgress();
+    LHOLO_CHECK(progress.placed == 100);
+
+    publishVisibleProgress(60, 80);
+    publishErrorProgress(130, 5, 140);
+    progress = getPublishedBuildProgress();
+    LHOLO_CHECK(progress.visiblePlaced == 60);
+    LHOLO_CHECK(progress.visibleTotal == 80);
+    LHOLO_CHECK(progress.wrongType == 100);
+    LHOLO_CHECK(progress.wrongState == 5);
+    LHOLO_CHECK(progress.extra == 140);
+
+    resetPublishedBuildProgress();
+    progress = getPublishedBuildProgress();
+    LHOLO_CHECK(progress.total == 0);
+    LHOLO_CHECK(progress.placed == 0);
+    LHOLO_CHECK(progress.visibleTotal == 0);
+
+    initializePublishedBuildProgress(50);
+    publishVisibleProgress(40, 30);
+    progress = getPublishedBuildProgress();
+    LHOLO_CHECK(progress.visiblePlaced == 30);
+    LHOLO_CHECK(progress.total == 50);
+
+    resetPublishedBuildProgressCounts();
+    progress = getPublishedBuildProgress();
+    LHOLO_CHECK(progress.total == 50);
+    LHOLO_CHECK(progress.placed == 0);
+    LHOLO_CHECK(progress.wrongType == 0);
+    LHOLO_CHECK(progress.wrongState == 0);
+    LHOLO_CHECK(progress.extra == 0);
+}
+
+// Dedicated config migration/serialization regression suite.
+void testSettingsStore() {
+    LHOLO_CHECK(runSettingsStoreTests() == 0);
+}
+
+void testStructureSession() {
+    using lholo::structure::LayerAxis;
+    using lholo::structure::LayerDisplayMode;
+    using lholo::structure::detail::SavedProjectionSnapshot;
+    using lholo::structure::detail::StructureSession;
+
+    auto& session = StructureSession::getInstance();
+    session.clearLoaded(lholo::i18n::Message{lholo::i18n::TextKey::StatusNotLoaded});
+    session.resetTransform();
+    session.setLastPath("initial.mcstructure");
+    session.setSavedProjection(SavedProjectionSnapshot{});
+
+    auto snapshot = session.snapshot();
+    LHOLO_CHECK(!snapshot.loaded);
+    // The snapshot renders the stored message in the selected language.
+    LHOLO_CHECK(snapshot.status == lholo::i18n::tr(lholo::i18n::TextKey::StatusNotLoaded));
+    LHOLO_CHECK(snapshot.lastPath == "initial.mcstructure");
+    LHOLO_CHECK(snapshot.transform.rotation == 0);
+    LHOLO_CHECK(!snapshot.saved.available);
+
+    auto loaded = std::make_shared<LoadedStructure>();
+    loaded->sizeX = 7;
+    loaded->sizeY = 5;
+    loaded->sizeZ = 3;
+    replaceLoadedForTest(session,
+        loaded,
+        "active.mcstructure",
+        lholo::i18n::Message{lholo::i18n::TextKey::StatusRestoredPending}
+    );
+    LHOLO_CHECK(session.setRotation(2));
+    LHOLO_CHECK(!session.setRotation(2));
+    LHOLO_CHECK(session.setMirror(1));
+    LHOLO_CHECK(session.setOffsetX(12));
+    LHOLO_CHECK(session.setOffsetY(-4));
+    LHOLO_CHECK(session.setLayerDisplayMode(LayerDisplayMode::Single));
+    LHOLO_CHECK(session.setDisplayLayer(4));
+    LHOLO_CHECK(session.setLayerAxis(LayerAxis::X));
+
+    snapshot = session.snapshot();
+    LHOLO_CHECK(snapshot.loaded == loaded);
+    LHOLO_CHECK(snapshot.maxLayerY == 4);
+    LHOLO_CHECK(snapshot.maxLayerX == 6);
+    LHOLO_CHECK(snapshot.transform.offsetX == 12);
+    LHOLO_CHECK(snapshot.transform.offsetY == -4);
+
+    session.recordProjectionAnchor(10, 20, 30);
+    auto const saved = session.savedProjection();
+    LHOLO_CHECK(saved.available);
+    LHOLO_CHECK(saved.anchorX == 10);
+    LHOLO_CHECK(saved.anchorY == 20);
+    LHOLO_CHECK(saved.anchorZ == 30);
+    LHOLO_CHECK(saved.transform.rotation == 2);
+    LHOLO_CHECK(saved.transform.mirror == 1);
+    LHOLO_CHECK(saved.structurePath == "active.mcstructure");
+
+    auto layered = std::make_shared<LoadedStructure>();
+    layered->sizeX = 3;
+    layered->sizeY = 8;
+    layered->sizeZ = 4;
+    replaceLoadedForTest(session,
+        layered,
+        "layered.mcstructure",
+        lholo::i18n::Message{lholo::i18n::TextKey::StatusRestoredPending}
+    );
+    session.setLayerDisplayMode(LayerDisplayMode::UpToCurrent);
+    session.setDisplayLayer(7);
+    session.setLayerAxis(LayerAxis::Y);
+    session.recordProjectionAnchor(40, 50, 60);
+    session.clearLoaded(lholo::i18n::Message{lholo::i18n::TextKey::StatusProjectionClosed});
+    session.setDisplayLayer(0); // Empty-menu clamping must not alter the saved layer.
+    auto const layeredSaved = session.savedProjection();
+    LHOLO_CHECK(layeredSaved.transform.layerDisplayMode == LayerDisplayMode::UpToCurrent);
+    LHOLO_CHECK(layeredSaved.transform.displayLayer == 7);
+    LHOLO_CHECK(layeredSaved.transform.layerAxis == LayerAxis::Y);
+
+    session.setLayerDisplayMode(layeredSaved.transform.layerDisplayMode);
+    session.setDisplayLayer(layeredSaved.transform.displayLayer);
+    session.setLayerAxis(layeredSaved.transform.layerAxis);
+    replaceLoadedForTest(session,
+        layered,
+        layeredSaved.structurePath,
+        lholo::i18n::Message{lholo::i18n::TextKey::StatusRestoredPending}
+    );
+    snapshot = session.snapshot();
+    LHOLO_CHECK(snapshot.loaded == layered);
+    LHOLO_CHECK(snapshot.maxLayerY == 7);
+    LHOLO_CHECK(snapshot.transform.displayLayer == 7);
+
+    session.clearLoaded(lholo::i18n::Message{lholo::i18n::TextKey::StatusProjectionClosed});
+}
+
+void testLayerHotkeyBounds() {
+    using lholo::structure::LayerAxis;
+    using lholo::structure::LayerDisplayMode;
+    using lholo::structure::detail::StructureSession;
+
+    auto& session = StructureSession::getInstance();
+    session.resetTransform();
+    auto loaded = std::make_shared<LoadedStructure>();
+    loaded->sizeX = 9;
+    loaded->sizeY = 7;
+    loaded->sizeZ = 5;
+    loaded->materialCount = 3;
+    replaceLoadedForTest(session, loaded, "layers.mcstructure", {});
+
+    for (auto mode : {LayerDisplayMode::Single, LayerDisplayMode::UpToCurrent, LayerDisplayMode::FromCurrent}) {
+        session.setLayerDisplayMode(mode);
+        for (auto axis : {LayerAxis::Y, LayerAxis::X, LayerAxis::Material, LayerAxis::Z}) {
+            session.setLayerAxis(axis);
+            int const count = axis == LayerAxis::Y ? 7 : (axis == LayerAxis::X ? 9 : axis == LayerAxis::Z ? 5 : 3);
+            session.setDisplayLayer(0);
+            for (int layer = 1; layer < count; ++layer) {
+                LHOLO_CHECK(session.adjustDisplayLayer(1));
+                LHOLO_CHECK(session.transform().displayLayer == layer);
+            }
+            session.adjustDisplayLayer(1);
+            LHOLO_CHECK(session.transform().displayLayer == count - 1);
+            session.adjustDisplayLayer(-1);
+            LHOLO_CHECK(session.transform().displayLayer == count - 2);
+            session.adjustDisplayLayer(-100);
+            LHOLO_CHECK(session.transform().displayLayer == 0);
+            session.adjustDisplayLayer(100);
+            LHOLO_CHECK(session.transform().displayLayer == count - 1);
+        }
+    }
+
+    // Range mode moves the whole range and keeps its width inside the structure (Y has 7 layers).
+    session.setLayerAxis(LayerAxis::Y);
+    session.setLayerDisplayMode(LayerDisplayMode::Range);
+    session.setDisplayLayer(lholo::structure::packLayerRange(1, 2));
+    LHOLO_CHECK(session.adjustDisplayLayer(1));
+    LHOLO_CHECK(session.transform().displayLayer == lholo::structure::packLayerRange(2, 3));
+    session.adjustDisplayLayer(100);
+    LHOLO_CHECK(session.transform().displayLayer == lholo::structure::packLayerRange(5, 6));
+    session.adjustDisplayLayer(-100);
+    LHOLO_CHECK(session.transform().displayLayer == lholo::structure::packLayerRange(0, 1));
+    session.setDisplayLayer(lholo::structure::packLayerRange(0, 6));
+    session.adjustDisplayLayer(1);
+    LHOLO_CHECK(session.transform().displayLayer == lholo::structure::packLayerRange(0, 6)); // a full-height range cannot move
+
+    session.setLayerDisplayMode(LayerDisplayMode::All);
+    session.setDisplayLayer(1);
+    LHOLO_CHECK(!session.adjustDisplayLayer(1));
+    LHOLO_CHECK(session.transform().displayLayer == 1);
+
+    auto single = std::make_shared<LoadedStructure>();
+    single->sizeX = single->sizeY = single->sizeZ = 1;
+    single->materialCount = 1;
+    replaceLoadedForTest(session, single, "single.mcstructure", {});
+    session.setLayerDisplayMode(LayerDisplayMode::Single);
+    for (auto axis : {LayerAxis::Y, LayerAxis::X, LayerAxis::Material, LayerAxis::Z}) {
+        session.setLayerAxis(axis);
+        session.setDisplayLayer(0);
+        session.adjustDisplayLayer(1);
+        LHOLO_CHECK(session.transform().displayLayer == 0);
+        session.adjustDisplayLayer(-1);
+        LHOLO_CHECK(session.transform().displayLayer == 0);
+    }
+    session.clearLoaded({});
+    session.adjustDisplayLayer(1);
+    LHOLO_CHECK(session.transform().displayLayer == 0);
+    session.resetTransform();
+}
+
+void testPlacementState() {
+    using lholo::place::detail::FailedPlanKey;
+    using lholo::place::detail::PlacementState;
+
+    auto& state = PlacementState::getInstance();
+    state.setEnabled(true);
+    state.setRangeEnabled(true);
+    state.setManualMode(true);
+    state.setRadius(3);
+    state.setAutoPlacementBreakCooldownSeconds(12);
+    LHOLO_CHECK(state.beginManualPress(100));
+    LHOLO_CHECK(!state.beginManualPress(120));
+    state.setLastManualPlaceAt(80);
+    state.setNextPlaceAt(140);
+    state.setNextSwapAt(150);
+
+    LHOLO_CHECK(state.enabled());
+    LHOLO_CHECK(!state.rangeEnabled()); // Removed LHolo radius mode cannot be re-enabled.
+    LHOLO_CHECK(state.manualMode());
+    LHOLO_CHECK(state.radius() == 3);
+    LHOLO_CHECK(state.autoPlacementBreakCooldownSeconds() == 12);
+    LHOLO_CHECK(state.manualPressAt() == 100);
+    LHOLO_CHECK(state.lastManualPlaceAt() == 80);
+    LHOLO_CHECK(state.manualPlaceRequested());
+    LHOLO_CHECK(state.manualHeld());
+    LHOLO_CHECK(state.nextPlaceAt() == 140);
+    LHOLO_CHECK(state.nextSwapAt() == 150);
+    state.releaseManualPress();
+    LHOLO_CHECK(!state.manualHeld());
+    LHOLO_CHECK(state.manualPlaceRequested());
+    state.cancelManualPress();
+    LHOLO_CHECK(!state.manualPlaceRequested());
+
+    constexpr std::int64_t recentCell = 0x123456789LL;
+    state.recordRecentPlacement(recentCell, 100, 150);
+    LHOLO_CHECK(state.recentPlacementActive(recentCell, 149));
+    LHOLO_CHECK(!state.recentPlacementActive(recentCell, 150));
+
+    constexpr std::int64_t suppressedCell = 0x23456789ALL;
+    LHOLO_CHECK(!state.autoPlacementSuppressionsActive(100));
+    state.suppressAutoPlacement(suppressedCell, 200);
+    LHOLO_CHECK(state.autoPlacementSuppressionsActive(100));
+    LHOLO_CHECK(state.autoPlacementSuppressed(suppressedCell, 199));
+    LHOLO_CHECK(!state.autoPlacementSuppressionsActive(200));
+    LHOLO_CHECK(!state.autoPlacementSuppressed(suppressedCell, 200));
+
+    // Extending the current earliest entry may leave the cheap expiry hint at
+    // its old value, but the first boundary refresh must retain the live entry.
+    state.suppressAutoPlacement(suppressedCell, 300);
+    state.suppressAutoPlacement(suppressedCell, 350);
+    LHOLO_CHECK(state.autoPlacementSuppressionsActive(300));
+    LHOLO_CHECK(state.autoPlacementSuppressed(suppressedCell, 349));
+    LHOLO_CHECK(!state.autoPlacementSuppressionsActive(350));
+
+    FailedPlanKey const failedKey{recentCell, 42, 7, 1, 2, 3, 4, 5, 6};
+    state.cacheFailedPlan(failedKey, 200, 250);
+    LHOLO_CHECK(state.failedPlanCached(failedKey, 249));
+    LHOLO_CHECK(!state.failedPlanCached(failedKey, 250));
+
+    state.setAimedProjectedBlock({"Test projected block", "minecraft:stone", {}});
+    LHOLO_CHECK(state.aimedProjectedBlock().name == "Test projected block"
+        && state.aimedProjectedBlock().iconId == "minecraft:stone");
+
+    state.recordRecentPlacement(recentCell, 400, 500);
+    state.suppressAutoPlacement(suppressedCell, 500);
+    state.cacheFailedPlan(failedKey, 400, 500);
+    state.resetDimensionSession();
+    LHOLO_CHECK(state.enabled());
+    LHOLO_CHECK(!state.rangeEnabled()); // Removed LHolo radius mode cannot be re-enabled.
+    LHOLO_CHECK(state.manualMode());
+    LHOLO_CHECK(!state.manualHeld());
+    LHOLO_CHECK(!state.manualPlaceRequested());
+    LHOLO_CHECK(state.manualPressAt() == 0);
+    LHOLO_CHECK(state.lastManualPlaceAt() == 0);
+    LHOLO_CHECK(state.nextPlaceAt() == 0);
+    LHOLO_CHECK(state.nextSwapAt() == 0);
+    LHOLO_CHECK(!state.recentPlacementActive(recentCell, 400));
+    LHOLO_CHECK(!state.autoPlacementSuppressionsActive(400));
+    LHOLO_CHECK(!state.autoPlacementSuppressed(suppressedCell, 400));
+    LHOLO_CHECK(!state.failedPlanCached(failedKey, 400));
+    LHOLO_CHECK(state.aimedProjectedBlock().name.empty() && state.aimedProjectedBlock().iconId.empty() && !state.aimedProjectedBlock().iconItem);
+    LHOLO_CHECK(state.radius() == 3);
+    LHOLO_CHECK(state.autoPlacementBreakCooldownSeconds() == 12);
+
+    LHOLO_CHECK(state.beginManualPress(450));
+    state.setAimedProjectedBlock({"World projected block", "minecraft:stone", {}});
+    state.suppressAutoPlacement(suppressedCell, 500);
+    state.resetWorldSession();
+    LHOLO_CHECK(!state.enabled());
+    LHOLO_CHECK(!state.rangeEnabled());
+    LHOLO_CHECK(!state.manualMode());
+    LHOLO_CHECK(!state.manualHeld());
+    LHOLO_CHECK(!state.manualPlaceRequested());
+    LHOLO_CHECK(state.manualPressAt() == 0);
+    LHOLO_CHECK(state.lastManualPlaceAt() == 0);
+    LHOLO_CHECK(state.nextPlaceAt() == 0);
+    LHOLO_CHECK(state.nextSwapAt() == 0);
+    LHOLO_CHECK(!state.recentPlacementActive(recentCell, 0));
+    LHOLO_CHECK(!state.autoPlacementSuppressionsActive(0));
+    LHOLO_CHECK(!state.autoPlacementSuppressed(suppressedCell, 0));
+    LHOLO_CHECK(!state.failedPlanCached(failedKey, 0));
+    LHOLO_CHECK(state.aimedProjectedBlock().name.empty() && state.aimedProjectedBlock().iconId.empty() && !state.aimedProjectedBlock().iconItem);
+    // User configuration survives a world transition.
+    LHOLO_CHECK(state.radius() == 3);
+    LHOLO_CHECK(state.autoPlacementBreakCooldownSeconds() == 12);
+
+    state.setRadius(4);
+    state.setAutoPlacementBreakCooldownSeconds(10);
+}
+
+void testStructureUiState() {
+    using lholo::structure::detail::HudStateSnapshot;
+    using lholo::structure::detail::StructureUiState;
+
+    auto& state = StructureUiState::getInstance();
+    state.resetHotkeys();
+    state.resetHotkeyState();
+    state.stopHotkeyCapture();
+    (void)state.consumePendingHotkeyActions();
+    state.clearMaterials();
+    LHOLO_CHECK(state.altWheelOffsetEnabled());
+    LHOLO_CHECK(state.setAltWheelOffsetEnabled(false));
+    LHOLO_CHECK(!state.setAltWheelOffsetEnabled(false));
+    LHOLO_CHECK(state.setAltWheelOffsetEnabled(true));
+    LHOLO_CHECK(state.altWheelOffsetEnabled());
+
+    auto hud = state.hud();
+    hud.enabled = false;
+    hud.showLayer = false;
+    hud.showProjectedBlockName = false;
+    hud.position = 3;
+    LHOLO_CHECK(state.applyHud(hud));
+    LHOLO_CHECK(!state.applyHud(hud));
+    auto const appliedHud = state.hud();
+    LHOLO_CHECK(!appliedHud.enabled);
+    LHOLO_CHECK(!appliedHud.showLayer);
+    LHOLO_CHECK(!appliedHud.showProjectedBlockName);
+    LHOLO_CHECK(appliedHud.position == 3);
+
+    state.resetHotkeys();
+    auto const guiSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::Gui);
+    auto const moveLeftSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::MoveLeft);
+    auto const moveRightSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::MoveRight);
+    auto const layerIncreaseSlot = lholo::input::hotkeyIndex(lholo::input::HotkeyId::LayerIncrease);
+    LHOLO_CHECK(state.hotkey(guiSlot).key == 'M');
+    LHOLO_CHECK(state.hotkey(guiSlot).modifiers == 0);
+    LHOLO_CHECK(state.hotkey(moveLeftSlot).key == VK_LEFT);
+    LHOLO_CHECK(state.hotkey(layerIncreaseSlot).key == VK_UP);
+
+    state.beginHotkeyCapture(moveLeftSlot);
+    LHOLO_CHECK(state.capturingHotkey() == moveLeftSlot);
+    state.setHotkey(moveRightSlot, 'K', lholo::ui::kHotkeyModifierControl);
+    state.bindCapturedHotkey(moveLeftSlot, 'K', lholo::ui::kHotkeyModifierControl);
+    LHOLO_CHECK(state.hotkey(moveLeftSlot).key == 'K');
+    LHOLO_CHECK(state.hotkey(moveRightSlot).key == 0);
+    LHOLO_CHECK(!state.capturingHotkey());
+
+    state.setControlHeld(true);
+    state.setShiftHeld(true);
+    LHOLO_CHECK(
+        state.currentHotkeyModifiers()
+        == (lholo::ui::kHotkeyModifierControl | lholo::ui::kHotkeyModifierShift)
+    );
+    state.setControlHeld(false);
+    state.setShiftHeld(false);
+
+    state.resetHotkeys();
+    LHOLO_CHECK(state.tryPressHotkey(guiSlot));
+    LHOLO_CHECK(!state.tryPressHotkey(guiSlot));
+    LHOLO_CHECK(state.releaseHotkeysForKey('M', 100));
+    LHOLO_CHECK(state.releaseHotkeysForKey('M', 150));
+    LHOLO_CHECK(!state.releaseHotkeysForKey('M', 201));
+
+    // The state only accumulates a delta now; which world direction a move
+    // hotkey produces is resolved in ViewMoveBasis from the player's facing.
+    state.queueOffsetDelta(-1, 1, 0);
+    state.queueLayerDelta(-1);
+    state.requestSettingsSave();
+    auto const pending = state.consumePendingHotkeyActions();
+    LHOLO_CHECK(pending.offsetX == -1);
+    LHOLO_CHECK(pending.offsetY == 1);
+    LHOLO_CHECK(pending.offsetZ == 0);
+    LHOLO_CHECK(pending.layerDelta == -1);
+    LHOLO_CHECK(pending.settingsSave);
+
+    state.clearMaterials();
+    LHOLO_CHECK(!state.materialListSnapshotIfChanged(std::nullopt)->ready);
+    state.requestMaterialList();
+    LHOLO_CHECK(state.consumeMaterialListRequest());
+    LHOLO_CHECK(!state.consumeMaterialListRequest());
+    state.replaceMaterialRequirements({
+        {.displayName = "Stone", .typeName = "minecraft:stone",
+         .itemId = "minecraft:stone", .count = 12}
+    });
+    LHOLO_CHECK(state.materialListSnapshotIfChanged(std::nullopt)->ready);
+    // Reopening a completed list must not queue another full structure scan.
+    state.requestMaterialList();
+    LHOLO_CHECK(!state.consumeMaterialListRequest());
+    auto const materials = state.materialListSnapshotIfChanged(std::nullopt)->requirements;
+    LHOLO_CHECK(materials.size() == 1);
+    LHOLO_CHECK(materials[0].typeName == "minecraft:stone");
+    LHOLO_CHECK(materials[0].itemId == "minecraft:stone");
+    LHOLO_CHECK(materials[0].count == 12);
+    auto listBefore = state.materialListSnapshotIfChanged(std::nullopt);
+    state.updateMaterialListAvailability(listBefore->revision, {7});
+    auto listAfter = state.materialListSnapshotIfChanged(listBefore->revision);
+    LHOLO_CHECK(listAfter && listAfter->requirements[0].available == 7);
+    state.updateMaterialListAvailability(listBefore->revision, {99});
+    LHOLO_CHECK(state.materialListSnapshotIfChanged(std::nullopt)->requirements[0].available == 7);
+    state.updateMaterialListAvailability(listAfter->revision, {7});
+    LHOLO_CHECK(!state.materialListSnapshotIfChanged(listAfter->revision));
+
+
+    auto hudMaterials = state.materialHudSnapshot();
+    LHOLO_CHECK(!hudMaterials.ready);
+    state.replaceMaterialHudSnapshot(
+        {{.displayName = "Glass", .typeName = "minecraft:glass",
+          .itemId = "minecraft:glass", .count = 5}},
+        {2}
+    );
+    hudMaterials = state.materialHudSnapshot();
+    LHOLO_CHECK(hudMaterials.ready);
+    LHOLO_CHECK(hudMaterials.requirements.size() == 1);
+    LHOLO_CHECK(hudMaterials.requirements[0].count == 5);
+    LHOLO_CHECK(hudMaterials.available.size() == 1);
+    LHOLO_CHECK(hudMaterials.available[0] == 2);
+    // Updating the current-layer HUD must not replace the whole-structure list.
+    LHOLO_CHECK(state.materialListSnapshotIfChanged(std::nullopt)->requirements[0].typeName == "minecraft:stone");
+    state.clearMaterialHud();
+    LHOLO_CHECK(!state.materialHudSnapshot().ready);
+
+    // Incremental consumers see readiness and contents from the same version.
+    auto snapshot = state.materialListSnapshotIfChanged(std::nullopt);
+    LHOLO_CHECK(snapshot && snapshot->ready && snapshot->requirements.size() == 1);
+    auto const revision = snapshot->revision;
+    LHOLO_CHECK(!state.materialListSnapshotIfChanged(revision));
+    state.clearMaterials();
+    snapshot = state.materialListSnapshotIfChanged(revision);
+    LHOLO_CHECK(snapshot && !snapshot->ready && snapshot->requirements.empty());
+    auto const clearedRevision = snapshot->revision;
+    state.replaceMaterialRequirements({});
+    snapshot = state.materialListSnapshotIfChanged(clearedRevision);
+    LHOLO_CHECK(snapshot && snapshot->ready && snapshot->requirements.empty());
+    LHOLO_CHECK(!state.materialListSnapshotIfChanged(snapshot->revision));
+
+    state.setExperimentalConsentGiven(true);
+    state.setMaterialHudEnabled(true);
+    state.setMaterialHudPosition(3);
+    state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusWorldExited}, 1234);
+    LHOLO_CHECK(state.experimentalConsentGiven());
+    LHOLO_CHECK(state.materialHudEnabled());
+    LHOLO_CHECK(state.materialHudPosition() == 3);
+    auto const hint = state.actionHint();
+    LHOLO_CHECK(hint.text == lholo::i18n::tr(lholo::i18n::TextKey::StatusWorldExited));
+    LHOLO_CHECK(hint.expiry == 1234);
+
+    state.beginHotkeyCapture(moveLeftSlot);
+    state.setControlHeld(true);
+    state.queueOffsetDelta(1, 0, 0);
+    state.queueLayerDelta(1);
+    state.requestSettingsSave();
+    state.setAltWheelOffsetEnabled(false);
+    state.replaceMaterialRequirements({
+        {.displayName = "Stone", .typeName = "minecraft:stone",
+         .itemId = "minecraft:stone", .count = 4}
+    });
+    state.replaceMaterialHudSnapshot(
+        {{.displayName = "Glass", .typeName = "minecraft:glass",
+          .itemId = "minecraft:glass", .count = 2}},
+        {1}
+    );
+    state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusWorldExited}, 9999);
+    state.resetWorldSession();
+    LHOLO_CHECK(!state.capturingHotkey());
+    LHOLO_CHECK(state.currentHotkeyModifiers() == 0);
+    LHOLO_CHECK(!state.materialListSnapshotIfChanged(std::nullopt)->ready);
+    LHOLO_CHECK(!state.materialHudSnapshot().ready);
+    LHOLO_CHECK(state.actionHint().text.empty());
+    LHOLO_CHECK(state.actionHint().expiry == 0);
+    auto const afterWorldExit = state.consumePendingHotkeyActions();
+    LHOLO_CHECK(afterWorldExit.offsetX == 0);
+    LHOLO_CHECK(afterWorldExit.offsetY == 0);
+    LHOLO_CHECK(afterWorldExit.offsetZ == 0);
+    LHOLO_CHECK(afterWorldExit.layerDelta == 0);
+    // A pending settings write is not world-owned and must still complete.
+    LHOLO_CHECK(afterWorldExit.settingsSave);
+    LHOLO_CHECK(state.experimentalConsentGiven());
+    LHOLO_CHECK(state.materialHudEnabled());
+    LHOLO_CHECK(state.materialHudPosition() == 3);
+    // The fixed-gesture switch is a user preference, so leaving a world keeps
+    // it whereas the transient flags above are cleared.
+    LHOLO_CHECK(!state.altWheelOffsetEnabled());
+
+    state.resetHotkeys();
+    // "Reset all hotkeys" also restores the fixed-gesture switch.
+    LHOLO_CHECK(state.altWheelOffsetEnabled());
+    state.resetHotkeyState();
+    state.clearMaterials();
+    LHOLO_CHECK(!state.materialListSnapshotIfChanged(std::nullopt)->ready);
+    state.setExperimentalConsentGiven(false);
+    state.setMaterialHudEnabled(false);
+    state.setMaterialHudPosition(3);
+    state.setActionHint({}, 0);
+    state.applyHud(HudStateSnapshot{});
+}
+
+void testLoadingActionHint() {
+    auto& state = lholo::structure::detail::StructureUiState::getInstance();
+    state.setActionHint({}, 0);
+    state.clearLoadingHint();
+    LHOLO_CHECK(!state.actionHintActive(100));
+    auto const first = state.beginLoadingHint();
+    auto hint = state.actionHint(1000000);
+    LHOLO_CHECK(hint.persistent);
+    LHOLO_CHECK(hint.text == lholo::i18n::format(lholo::i18n::Message{lholo::i18n::TextKey::StatusLoading}));
+    LHOLO_CHECK(state.actionHintActive(1000000)); // no fixed timeout
+    LHOLO_CHECK(!state.actionHintActive(1000000, true));
+    LHOLO_CHECK(state.actionHint(1000000, true).text.empty());
+    state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusProjectionClosed}, 300);
+    hint = state.actionHint(200);
+    LHOLO_CHECK(!hint.persistent && hint.expiry == 300);
+    LHOLO_CHECK(!state.actionHintActive(200, true));
+    LHOLO_CHECK(state.actionHint(200, true).text.empty());
+    LHOLO_CHECK(state.actionHint(300).persistent); // loading resumes after transient hint
+    state.finishLoadingHint(first);
+    LHOLO_CHECK(!state.actionHintActive(300));
+    LHOLO_CHECK(state.actionHint(300).text.empty());
+
+    state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::ActionHintSelectedFileOtherDimension}, 500, true);
+    LHOLO_CHECK(state.actionHintActive(400, true));
+    LHOLO_CHECK(state.actionHint(400, true).text == lholo::i18n::tr(lholo::i18n::TextKey::ActionHintSelectedFileOtherDimension));
+    LHOLO_CHECK(!state.actionHintActive(500, true));
+    LHOLO_CHECK(state.actionHint(500, true).text.empty());
+    state.clearActionHint(lholo::i18n::TextKey::StatusProjectionClosed);
+    LHOLO_CHECK(state.actionHintActive(400, true));
+    state.clearActionHint(lholo::i18n::TextKey::ActionHintSelectedFileOtherDimension);
+    LHOLO_CHECK(!state.actionHintActive(400, true));
+    state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusProjectionClosed}, 600);
+    state.clearActionHint(lholo::i18n::TextKey::ActionHintSelectedFileOtherDimension);
+    LHOLO_CHECK(state.actionHintActive(400) && !state.actionHintActive(400, true));
+    state.setActionHint({}, 0);
+
+    auto const old = state.beginLoadingHint();
+    state.resetWorldSession();
+    LHOLO_CHECK(!state.actionHintActive(100));
+    auto const current = state.beginLoadingHint();
+    state.finishLoadingHint(old); // old world cannot clear a later load
+    LHOLO_CHECK(state.actionHint(100).persistent);
+    state.clearLoadingHint(); // close projection removes loading presentation
+    LHOLO_CHECK(!state.actionHintActive(100));
+    state.finishLoadingHint(current);
+
+    auto const final = state.beginLoadingHint();
+    state.setActionHint(lholo::i18n::Message{lholo::i18n::TextKey::StatusProjectionClosed}, 500);
+    state.finishLoadingHint(final);
+    LHOLO_CHECK(state.actionHintActive(400)); // finishing leaves unrelated hints intact
+    LHOLO_CHECK(!state.actionHint(400).persistent);
+    state.setActionHint({}, 0);
+
+    auto const task = state.beginLoadingHint(lholo::i18n::TextKey::TasksLoading);
+    hint = state.actionHint(1000000);
+    LHOLO_CHECK(hint.persistent && hint.expiry == 0);
+    LHOLO_CHECK(hint.text == lholo::i18n::tr(lholo::i18n::TextKey::TasksLoading));
+    auto const language = lholo::i18n::language();
+    lholo::i18n::setLanguageByCode("en_US");
+    LHOLO_CHECK(state.actionHint(1000000).text == lholo::i18n::tr(lholo::i18n::TextKey::TasksLoading));
+    lholo::i18n::setLanguage(language);
+    state.finishLoadingHint(final); // an older file load cannot hide task loading
+    LHOLO_CHECK(state.actionHint(1000000).persistent);
+    state.finishLoadingHint(task);
+    LHOLO_CHECK(!state.actionHintActive(1000000));
+    auto const file = state.beginLoadingHint(); // default wording stays single-file specific
+    LHOLO_CHECK(state.actionHint(1000000).text == lholo::i18n::tr(lholo::i18n::TextKey::StatusLoading));
+    state.finishLoadingHint(file);
+}
+
+void testHotkeyFormat() {
+    LHOLO_CHECK(lholo::ui::isModifierKey(VK_CONTROL));
+    LHOLO_CHECK(lholo::ui::isModifierKey(VK_MENU));
+    LHOLO_CHECK(lholo::ui::isModifierKey(VK_LWIN));
+    LHOLO_CHECK(!lholo::ui::isModifierKey('A'));
+    // Compare against the table rather than against literals: these assertions
+    // cover name formatting, while the wording follows the selected language.
+    using lholo::i18n::TextKey;
+    LHOLO_CHECK(lholo::ui::hotkeyName(0) == lholo::i18n::tr(TextKey::KeyNotSet));
+    LHOLO_CHECK(lholo::ui::hotkeyName(VK_MBUTTON) == lholo::i18n::tr(TextKey::KeyMouseMiddle));
+    LHOLO_CHECK(lholo::ui::hotkeyName(VK_XBUTTON1) == lholo::i18n::tr(TextKey::KeyMouseSide1));
+    LHOLO_CHECK(lholo::ui::hotkeyName(VK_XBUTTON2) == lholo::i18n::tr(TextKey::KeyMouseSide2));
+    LHOLO_CHECK(lholo::ui::hotkeyChordName(0, 0) == lholo::i18n::tr(TextKey::KeyNotSet));
+    auto const chord = lholo::ui::hotkeyChordName(lholo::ui::kHotkeyModifierControl, 'M');
+    LHOLO_CHECK(chord.rfind("Ctrl + ", 0) == 0);
+    LHOLO_CHECK(chord.size() > 7);
+}
+
+void testViewMoveBasis() {
+    using lholo::input::HotkeyId;
+    using lholo::input::viewForwardStep;
+    using lholo::input::viewRelativeMoveStep;
+
+    // Facing follows the game's yaw convention: 0 = south (+Z), 90 = west (-X),
+    // 180 = north (-Z), -90 = east (+X). Left and right are the facing turned a
+    // quarter turn, so facing north puts east on the right and facing east puts
+    // south on the right.
+    auto const south = viewRelativeMoveStep(HotkeyId::MoveForward, 0.0f);
+    LHOLO_CHECK(south.valid && south.dx == 0 && south.dy == 0 && south.dz == 1);
+    auto const southBackward = viewRelativeMoveStep(HotkeyId::MoveBackward, 0.0f);
+    LHOLO_CHECK(southBackward.valid && southBackward.dz == -1);
+    auto const southRight = viewRelativeMoveStep(HotkeyId::MoveRight, 0.0f);
+    LHOLO_CHECK(southRight.valid && southRight.dx == -1 && southRight.dz == 0);
+    auto const southLeft = viewRelativeMoveStep(HotkeyId::MoveLeft, 0.0f);
+    LHOLO_CHECK(southLeft.valid && southLeft.dx == 1 && southLeft.dz == 0);
+
+    auto const north = viewRelativeMoveStep(HotkeyId::MoveForward, 180.0f);
+    LHOLO_CHECK(north.valid && north.dx == 0 && north.dz == -1);
+    auto const northRight = viewRelativeMoveStep(HotkeyId::MoveRight, 180.0f);
+    LHOLO_CHECK(northRight.valid && northRight.dx == 1 && northRight.dz == 0);
+
+    auto const east = viewRelativeMoveStep(HotkeyId::MoveForward, -90.0f);
+    LHOLO_CHECK(east.valid && east.dx == 1 && east.dz == 0);
+    auto const eastRight = viewRelativeMoveStep(HotkeyId::MoveRight, -90.0f);
+    LHOLO_CHECK(eastRight.valid && eastRight.dx == 0 && eastRight.dz == 1);
+
+    auto const west = viewRelativeMoveStep(HotkeyId::MoveForward, 90.0f);
+    LHOLO_CHECK(west.valid && west.dx == -1 && west.dz == 0);
+    auto const westRight = viewRelativeMoveStep(HotkeyId::MoveRight, 90.0f);
+    LHOLO_CHECK(westRight.valid && westRight.dx == 0 && westRight.dz == -1);
+
+    // Only the dominant axis steps: 30 degrees still moves along Z, 60 degrees
+    // moves along X, and an exactly diagonal facing resolves to X.
+    auto const shallow = viewRelativeMoveStep(HotkeyId::MoveForward, 30.0f);
+    LHOLO_CHECK(shallow.valid && shallow.dx == 0 && shallow.dz == 1);
+    auto const steep = viewRelativeMoveStep(HotkeyId::MoveForward, 60.0f);
+    LHOLO_CHECK(steep.valid && steep.dx == -1 && steep.dz == 0);
+    auto const diagonal = viewRelativeMoveStep(HotkeyId::MoveForward, 45.0f);
+    LHOLO_CHECK(diagonal.valid && diagonal.dx == -1 && diagonal.dz == 0);
+    // Facing north-east (-135) and stepping backward faces south-west, which the
+    // dominant-axis rule resolves to west on the X axis.
+    auto const diagonalBackward = viewRelativeMoveStep(HotkeyId::MoveBackward, -135.0f);
+    LHOLO_CHECK(diagonalBackward.valid && diagonalBackward.dx == -1 && diagonalBackward.dz == 0);
+
+    // The vertical slots stay on the world Y axis whatever the facing is.
+    auto const up = viewRelativeMoveStep(HotkeyId::MoveUp, 45.0f);
+    LHOLO_CHECK(up.valid && up.dx == 0 && up.dy == 1 && up.dz == 0);
+    auto const down = viewRelativeMoveStep(HotkeyId::MoveDown, 203.0f);
+    LHOLO_CHECK(down.valid && down.dx == 0 && down.dy == -1 && down.dz == 0);
+
+    // Pitch never participates: every facing yields a usable step, the four
+    // horizontal slots stay horizontal and change exactly one coordinate.
+    float const yaws[]{0.0f, 45.0f, 90.0f, 135.0f, 180.0f, -135.0f, -90.0f, -45.0f, 359.5f};
+    for (auto const yaw : yaws) {
+        for (auto const move : {HotkeyId::MoveLeft, HotkeyId::MoveRight,
+                                HotkeyId::MoveForward, HotkeyId::MoveBackward}) {
+            auto const step = viewRelativeMoveStep(move, yaw);
+            LHOLO_CHECK(step.valid);
+            LHOLO_CHECK(step.dy == 0);
+            LHOLO_CHECK((step.dx != 0) != (step.dz != 0));
+        }
+        LHOLO_CHECK(viewRelativeMoveStep(HotkeyId::MoveUp, yaw).valid);
+        LHOLO_CHECK(viewRelativeMoveStep(HotkeyId::MoveDown, yaw).valid);
+    }
+    // Slots that are not move slots have no direction to produce.
+    LHOLO_CHECK(!viewRelativeMoveStep(HotkeyId::Gui, 0.0f).valid);
+    LHOLO_CHECK(!viewRelativeMoveStep(HotkeyId::LayerIncrease, 0.0f).valid);
+
+    // The fixed Alt+wheel gesture keeps its own rule: pitch participates and a
+    // diagonal view still produces a diagonal step.
+    auto const ahead = viewForwardStep(0.0f, 0.0f, -1.0f, 1);
+    LHOLO_CHECK(ahead.valid && ahead.dx == 0 && ahead.dy == 0 && ahead.dz == -1);
+    auto const aheadAndDown = viewForwardStep(0.0f, -0.5f, -0.5f, 1);
+    LHOLO_CHECK(aheadAndDown.valid && aheadAndDown.dy == -1 && aheadAndDown.dz == -1);
+    auto const diagonalWheel = viewForwardStep(0.707f, 0.0f, -0.707f, 1);
+    LHOLO_CHECK(diagonalWheel.valid && diagonalWheel.dx == 1 && diagonalWheel.dz == -1);
+    auto const twoNotches = viewForwardStep(0.0f, 1.0f, 0.0f, 2);
+    LHOLO_CHECK(twoNotches.valid && twoNotches.dy == 2);
+    LHOLO_CHECK(!viewForwardStep(0.0f, 0.0f, 0.0f, 1).valid);
+    LHOLO_CHECK(!viewForwardStep(0.0f, 0.0f, -1.0f, 0).valid);
+}
+
+void testBlockPlacementRules() {
+    using lholo::block::placeableBaseName;
+    using lholo::block::materialKey;
+    LHOLO_CHECK(placeableBaseName("minecraft:lit_redstone_lamp") == "minecraft:redstone_lamp");
+    LHOLO_CHECK(placeableBaseName("minecraft:powered_repeater") == "minecraft:unpowered_repeater");
+    LHOLO_CHECK(placeableBaseName("minecraft:stone") == "minecraft:stone");
+    LHOLO_CHECK(materialKey("minecraft:powered_repeater") == "item:minecraft:repeater");
+    LHOLO_CHECK(materialKey("minecraft:flowing_water") == "minecraft:water");
+    LHOLO_CHECK(materialKey("minecraft:moving_block").empty());
+}
+
+void testJavaTextComponents() {
+    using lholo::structure::detail::javaTextComponentToPlainText;
+    LHOLO_CHECK(javaTextComponentToPlainText(R"("Launch")") == "Launch");
+    LHOLO_CHECK(javaTextComponentToPlainText(R"({"text":"X","extra":[{"text":" count"}]})") == "X count");
+    LHOLO_CHECK(javaTextComponentToPlainText(R"(["A",{"text":"B"}])") == "AB");
+    LHOLO_CHECK(javaTextComponentToPlainText(R"({"translate":"block.minecraft.oak_sign"})")
+                == "block.minecraft.oak_sign");
+    LHOLO_CHECK(javaTextComponentToPlainText("not json") == "not json");
+}
+
+void testI18n() {
+    using namespace lholo::i18n;
+
+    // Every locale discovered by the generated registry must parse and cover
+    // every key: this is the runtime successor of the old compile-time check.
+    initLanguageStore();
+    auto const available = languages();
+    LHOLO_CHECK(available.size() >= 2);
+
+    auto const chinese = languageFromCode("zh_CN");
+    auto const english = languageFromCode("en_US");
+    LHOLO_CHECK(chinese != kInvalidLanguage);
+    LHOLO_CHECK(english != kInvalidLanguage);
+    LHOLO_CHECK(defaultLanguage() == english);
+    auto const spanish = languageFromCode("es_ES");
+    LHOLO_CHECK(spanish != kInvalidLanguage);
+    LHOLO_CHECK(languageFromCode("es_MX") == spanish);
+    LHOLO_CHECK(languageFromCode("es-ES") == spanish);
+    LHOLO_CHECK(std::string_view{tr(TextKey::MenuClose, spanish)} == "Cerrar menú");
+
+    LHOLO_CHECK(languageFromCode("missing_LOCALE") == kInvalidLanguage);
+
+    LHOLO_CHECK(setLanguageByCode(kFollowGameLanguageCode));
+    updateGameLanguage("en_US");
+    LHOLO_CHECK(followsGameLanguage() && language() == english && languagePreferenceCode() == "auto");
+    updateGameLanguage("missing_LOCALE");
+    LHOLO_CHECK(language() == english && languagePreferenceCode() == "auto");
+    updateGameLanguage("en_US");
+    LHOLO_CHECK(language() == english && languagePreferenceCode() == "auto");
+    LHOLO_CHECK(setLanguageByCode("zh_CN"));
+    updateGameLanguage("en_US");
+    LHOLO_CHECK(!followsGameLanguage() && language() == chinese && languagePreferenceCode() == "zh_CN");
+
+    for (std::size_t index = 0; index < available.size(); ++index) {
+        auto const candidate = static_cast<Language>(index);
+        auto const stats = languageStats(candidate);
+        LHOLO_CHECK(stats.parsed);
+        LHOLO_CHECK(stats.metadataValid);
+        LHOLO_CHECK(stats.missing == 0);
+        LHOLO_CHECK(stats.unknown == 0);
+        LHOLO_CHECK(stats.nonString == 0);
+        LHOLO_CHECK(stats.empty == 0);
+        LHOLO_CHECK(!available[index].code.empty());
+        LHOLO_CHECK(!available[index].displayName.empty());
+    }
+
+    // Every key resolves to text in every language; every key except the "no
+    // message" sentinel must carry actual wording.
+    for (std::size_t index = 0; index < kTextKeyCount; ++index) {
+        auto const key = static_cast<TextKey>(index);
+        for (std::size_t languageIndex = 0; languageIndex < available.size(); ++languageIndex) {
+            auto const candidate = static_cast<Language>(languageIndex);
+            auto const* text = tr(key, candidate);
+            LHOLO_CHECK(text != nullptr);
+            LHOLO_CHECK(key == TextKey::None ? *text == '\0' : *text != '\0');
+        }
+    }
+    // The sentinel is the platform zero value, so a default-constructed message
+    // renders as nothing instead of an unrelated entry declared first.
+    LHOLO_CHECK(static_cast<std::uint16_t>(TextKey::None) == 0);
+    LHOLO_CHECK(format(Message{}) == std::string{});
+    // Out-of-range keys resolve to an empty string instead of null or garbage.
+    LHOLO_CHECK(tr(static_cast<TextKey>(kTextKeyCount)) != nullptr);
+    LHOLO_CHECK(*tr(static_cast<TextKey>(kTextKeyCount)) == '\0');
+
+    // Every language must declare the same placeholders as the default locale.
+    // A translation that drops or adds one would consume arguments that are not
+    // there (or silently ignore one that is).
+    auto const placeholders = [](std::string_view text) {
+        std::size_t count = 0;
+        for (std::size_t index = 0; index < text.size(); ++index) {
+            if (text[index] != '%') continue;
+            auto cursor = index + 1;
+            while (cursor < text.size()
+                   && (std::isdigit(static_cast<unsigned char>(text[cursor]))
+                       || text[cursor] == 'l' || text[cursor] == 'h'
+                       || text[cursor] == 'z' || text[cursor] == '.'
+                       || text[cursor] == '-')) {
+                ++cursor;
+            }
+            if (cursor < text.size()
+                && std::string_view{"diufsgxXc"}.find(text[cursor])
+                    != std::string_view::npos) {
+                ++count;
+                index = cursor;
+            }
+        }
+        return count;
+    };
+    for (std::size_t index = 0; index < kTextKeyCount; ++index) {
+        auto const key = static_cast<TextKey>(index);
+        auto const expected = placeholders(tr(key, chinese));
+        for (std::size_t languageIndex = 0; languageIndex < available.size(); ++languageIndex) {
+            LHOLO_CHECK(
+                placeholders(tr(key, static_cast<Language>(languageIndex))) == expected
+            );
+        }
+    }
+
+    // Switching the active language by index or stable code changes lookups and
+    // is reversible. An unknown code falls back to English.
+    setLanguage(chinese);
+    auto const chineseClose = std::string{tr(TextKey::MenuClose)};
+    setLanguage(english);
+    auto const englishClose = std::string{tr(TextKey::MenuClose)};
+    LHOLO_CHECK(chineseClose != englishClose);
+    LHOLO_CHECK(std::string{tr(TextKey::MenuClose, chinese)} == chineseClose);
+    LHOLO_CHECK(std::string{tr(TextKey::MenuClose, english)} == englishClose);
+    LHOLO_CHECK(setLanguageByCode("en_US"));
+    LHOLO_CHECK(language() == english);
+    LHOLO_CHECK(!setLanguageByCode("missing_LOCALE"));
+    LHOLO_CHECK(language() == english);
+    LHOLO_CHECK(std::string{tr(TextKey::MenuClose)} == englishClose);
+
+    // Language names are shown in their own language, never translated.
+    LHOLO_CHECK(std::string{languageName(english)} == available[english].displayName);
+    LHOLO_CHECK(std::string{languageName(chinese)} == available[chinese].displayName);
+
+    // Messages keep their arguments and follow the active language.
+    setLanguage(english);
+    auto const englishFailure = format(Message{TextKey::StatusLoadFailed, {"boom"}});
+    LHOLO_CHECK(englishFailure.find("boom") != std::string::npos);
+    setLanguage(chinese);
+    auto const chineseFailure = format(Message{TextKey::StatusLoadFailed, {"boom"}});
+    LHOLO_CHECK(chineseFailure != englishFailure);
+    LHOLO_CHECK(chineseFailure.find("boom") != std::string::npos);
+    // A message without arguments renders its pattern unchanged.
+    auto const plain = format(Message{TextKey::StatusProjectionClosed});
+    LHOLO_CHECK(!plain.empty());
+    LHOLO_CHECK(plain == std::string{tr(TextKey::StatusProjectionClosed)});
+    // Extra arguments are ignored and a pattern without placeholders is never
+    // interpreted as a printf format string.
+    LHOLO_CHECK(format(Message{TextKey::StatusProjectionClosed, {"extra"}}) == plain);
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    if (argc == 2 && std::string_view{argv[1]} == "--benchmark-draw-cache") {
+        benchmarkProjectionDrawCache();
+        return 0;
+    }
+    LHOLO_CHECK(runProjectionCullingTests() == 0);
+    LHOLO_CHECK(runProjectionDrawCacheTests() == 0);
+    LHOLO_CHECK(runProjectionTransparentOrderTests() == 0);
+    LHOLO_CHECK(runProjectionBiomeRefreshTests() == 0);
+    LHOLO_CHECK(runCorrectionStateStoreTests() == 0);
+    LHOLO_CHECK(runProjectionNeighborSnapshotTests() == 0);
+    LHOLO_CHECK(runCorrectionSchedulingTests() == 0);
+    LHOLO_CHECK(runCorrectionAirScanTests() == 0);
+    LHOLO_CHECK(runCorrectionBulkEventTests() == 0);
+    LHOLO_CHECK(runStructureLoadOriginTests() == 0);
+    LHOLO_CHECK(runOverlayRenderingTests() == 0);
+    LHOLO_CHECK(runStructureFilePickerTests() == 0);
+    LHOLO_CHECK(runCaptureActionsTests() == 0);
+    LHOLO_CHECK(runSelectionInteractionTests() == 0);
+    LHOLO_CHECK(runJavaConfigTests() == 0);
+    LHOLO_CHECK(runJavaConfigActionsTests() == 0);
+    LHOLO_CHECK(runTransformActionsTests() == 0);
+    LHOLO_CHECK(runRenderSettingsTests() == 0);
+    LHOLO_CHECK(runCaptureFacetLifetimeTests() == 0);
+    testLayoutRules();
+    testProgress();
+    testSettingsStore();
+    testStructureSession();
+    testLayerHotkeyBounds();
+    testPlacementState();
+    LHOLO_CHECK(lholo::input::acceptsProjectionHotkeys(true, false, "hud_screen"));
+    LHOLO_CHECK(lholo::input::acceptsProjectionHotkeys(false, true, "start_screen"));
+    for (auto screen : {"chat_screen", "inventory_screen", "anvil_screen", "sign_screen", "pause_screen", "loading_screen", ""}) {
+        LHOLO_CHECK(!lholo::input::acceptsProjectionHotkeys(true, false, screen));
+        LHOLO_CHECK(!lholo::input::acceptsProjectionHotkeys(false, true, screen));
+    }
+    LHOLO_CHECK(lholo::oreui::canOpenMenuContext(false, true, "start_screen"));
+    LHOLO_CHECK(lholo::oreui::canOpenMenuContext(true, false, "hud_screen"));
+    LHOLO_CHECK(!lholo::oreui::canOpenMenuContext(false, false, "start_screen"));
+    LHOLO_CHECK(!lholo::oreui::canOpenMenuContext(false, true, "loading_screen"));
+    LHOLO_CHECK(!lholo::oreui::canOpenMenuContext(false, true, "settings_screen"));
+    testStructureUiState();
+    testLoadingActionHint();
+    testHotkeyFormat();
+    testViewMoveBasis();
+    testBlockPlacementRules();
+    testJavaTextComponents();
+    testI18n();
+    LHOLO_CHECK(runSettingsActionsTests() == 0);
+    LHOLO_CHECK(runNativeHudTests() == 0);
+    LHOLO_CHECK(runTaskTests() == 0);
+    LHOLO_CHECK(runIndependentTaskFilesTests() == 0);
+    LHOLO_CHECK(runTaskProjectionViewTests() == 0);
+    LHOLO_CHECK(runProjectionRaycastTests() == 0);
+    LHOLO_CHECK(runTaskActionsTests() == 0);
+    LHOLO_CHECK(runStructurePreviewTests() == 0);
+    LHOLO_CHECK(runStructureReadQueueTests() == 0);
+    LHOLO_CHECK(runStructureWriteTests() == 0);
+    LHOLO_CHECK(runCommandWriteTests() == 0);
+    LHOLO_CHECK(runLocalWriteQueueTests() == 0);
+    LHOLO_CHECK(runMaterialCountsTests() == 0);
+    LHOLO_CHECK(runStructureStorageTests() == 0);
+    LHOLO_CHECK(runBannerCorrectionTests() == 0);
+    LHOLO_CHECK(runStairShapeComparisonTests() == 0);
+    LHOLO_CHECK(runMcstructureInputTests() == 0);
+    LHOLO_CHECK(runVerifierComparisonTests() == 0);
+    LHOLO_CHECK(runLayerRangeTests() == 0);
+    LHOLO_CHECK(runJavaBlockEntityExportTests() == 0);
+    std::printf("LHoloLogicTests: %d checks, %d failures\n", gChecks, gFailures);
+    return gFailures == 0 ? 0 : 1;
+}

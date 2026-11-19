@@ -1,0 +1,160 @@
+# LHolo OreUI 前端
+
+当前外观已按用户要求改为 Java/MaLiLib 风格：全屏透明背景、像素字体、紧凑双列入口和方形按钮；不再采用旧圆角侧栏。下面涉及旧控件外观的描述由本节取代。西班牙语完整注册为 es_ES，未知语言回退英语。
+
+
+文件行新增“预览”：application/useStructurePreview → platform/previewBridge → 独立预览协议，进入原生结构预览场景。前端只发送任务/文件身份、revision 和窗口实测比例，不复制结构数据，不改变建造目标。App 持有订阅及请求状态，页面只展示按钮与错误。浏览器只提示前往游戏验证，不模拟三维渲染；见 [文件结构预览](../docs/STRUCTURE_PREVIEW.md)。
+
+建造任务页通过 `application/useTasks → platform/taskBridge → oreui/TaskBindings/TaskProtocol → app/TaskActions` 接入原生目录。任务 CRUD、外部路径、顺序、显隐和选择保存在模组 `data/tasks.json`；世界中选择任务后加载多文件合成投影，选中文件决定变换、切片、HUD/材料与放置目标。页面只保留输入草稿与弹窗，示例数据集中在 `preview/tasks.ts`。文件三维预览使用独立原生场景，实际渲染和生命周期仍需游戏内验证。
+
+聊天命令和快捷键均打开 OreUI 主菜单。动作提示使用独立 Gameface 页面，快捷键由 WindowHotkeys 接收，业务动作由 AppKernel 调度。
+默认打开主菜单，可进入建造任务；旧“投影”页面及其浏览、加载、恢复通路已移除。材料清单入口位于任务页，显示当前选中文件的材料并标明文件名称。创建结构选区与导出、结构变换、渲染设置、HUD、快捷键、语言与实验性功能已接入。OreUI 界面设置仅提供语言选择，HUD 各自管理缩放。
+
+## 浏览器实时预览
+
+在项目根目录运行：
+
+```powershell
+npm.cmd --prefix frontend ci
+npm.cmd --prefix frontend run preview
+```
+
+打开 http://127.0.0.1:4173/。修改 src/ 内的页面、控件或 CSS 后自动构建并刷新，无需启动游戏或编译 DLL。开发服务器只监听本机 127.0.0.1，终端 Ctrl+C 停止；端口占用时可先设置 `$env:LHOLO_PREVIEW_PORT = '4174'`。
+
+顶部工具栏可切换“已加载任务 / 两点选区 / 未进入世界 / 重置”，并调整字号。任务样例和请求模拟位于 preview/，不会读取世界、解析结构或生成结构文件。
+
+preview/ 仅提供开发环境适配和模拟 engine，正式页面、应用 hooks、控件与菜单 CSS 均复用 src/。浏览器预览使用 Mojang @react-facet/dom-fiber 渲染器创建自己的开发 root，不依赖游戏字体或原版游戏脚本。正式游戏构建仍复用游戏运行时，构建检查禁止 preview/ 和额外 React/Facet 运行时混入。
+
+浏览器适合检查排版、文案、输入和禁用状态；Gameface 的布局细节、游戏内焦点/手柄、原生文件选择和 C++ 生命周期仍需实机验证。
+
+```powershell
+npm.cmd --prefix frontend run preview:build  # 预览类型检查与独立构建
+npm.cmd --prefix frontend test               # 正式游戏入口的隔离测试
+```
+
+## 开发
+
+```powershell
+npm.cmd --prefix frontend ci
+npm.cmd --prefix frontend test
+```
+
+src/App.tsx 装配 useTasks、useProjectionState、useMaterials、useCapture 和设置 hooks。
+TasksPage 显示原生任务目录；LHoloMenu 负责布局和导航。
+application/useProjectionState 只订阅世界可用性、加载状态和投影是否存在，不再提供单文件加载/恢复动作。
+application/useCapture 管理坐标文本草稿、整数校验、revision 同步与请求 id 应答；不读写世界。创建页使用 LHolo 自绘输入框/勾选框，有效坐标与实体开关自动同步选区，不增加应用按钮；导出使用现代另存为对话框。
+platform/bridge 封装 engine、验证 JSON，并返回订阅清理函数。
+components/LHoloControls 与 components/LHoloSelect 集中绘制自有按钮、输入、勾选框和下拉框，样式以旧 ImGui 为基准；platform/native 仅封装无外观交互原语和滚动，版本私有符号只存在于 tools/oreui 的适配器。
+
+任务文件路径由原生目录持久化；页面只保留输入草稿。添加文件和浏览路径通过 TaskBindings 中的独立选择器完成，取消不会修改路径或加载任务。
+正式游戏入口不重复打包 React/Facet，不额外 createRoot；独立浏览器预览的开发 root 仅在 preview/ 中创建。
+
+构建只验证类型、打包和隔离行为；用户自行在游戏内验收。
+协议、资源版本和 DLL 一并部署步骤见 [迁移说明](../docs/OREUI_MIGRATION.md)。
+
+游戏前端按 ES2019 构建，不依赖 BigInt。尺寸使用精确整数跨度，体积用十进制乘法，隔离测试显式移除 BigInt 并复现依次记录两点。
+
+创建页坐标使用紧凑横排，XYZ 与取玩家位置按钮同行。输入使用自有 HTML input（显式 DOM input 事件），不使用原版 Form.TextField、BaseTextField 或 Switch 可视组件；字体和尺寸使用 LHolo 旧 ImGui 风格。
+
+迁移遵循旧 ImGui 的按钮与操作集合，不自行增加“应用”“确认”等步骤。创建页只有原有取位置、清除与导出等操作；输入自动同步，较早应答不覆盖新编辑。预览及游戏内均隐藏滚动条但保留滚动功能。
+
+## 结构变换
+
+application/useTransform 以原生快照为准，前端只保留未完成文本和待应答编辑。旋转、镜像、XYZ 偏移即时同步，连续编辑合并，旧应答不会覆盖新输入。快捷键和旧菜单更新回显；冲突或投影会话变化时回到原生状态。重开菜单读取真实值，不归零；不新增应用或重置按钮。
+
+## 渲染设置
+
+application/useRenderSettings 订阅原生参数与三个分层轴的真实最大索引。整体边框、轴/范围/当前层、填充/描边百分比、两个穿透开关即时同步；恢复默认纠错样式以一个字段批次提交 15%/100%。材料编号只在页面做一基转换，原生保持零基。
+
+只发送有改动的字段及对应原值，连续编辑合并，旧应答不覆盖新输入；加载 revision 或外部分层轴变化会丢弃失效的层输入，冲突回显原生值。重开读取原生状态，不用前端默认值覆盖配置。切换层/材料输入语义时重新建立输入控件。未收到原生快照前禁用控件；不增加应用按钮。
+
+## HUD、快捷键、界面与实验性设置
+
+App 只装配 useSettings 与四个具体页面 hook。useSettings 串行提交字段编辑/命令、合并连续编辑并处理应答，页面 hook 只持有输入文本、弹窗。engine 与 JSON 协议集中在 platform/settingsBridge；页面不访问 engine，不维护独立的配置副本。
+
+- HUD 原生快照驱动开关、位置、八项信息和材料 HUD。HUD 总开关关闭时禁用其条目，材料 HUD 独立控制。单字段更新保留其他设置。
+- 快捷键槽位、文案键、当前按键名称由原生下发；绑定动作启动原生捕获，不在正式前端注册 keydown/mousedown。复用旧输入规则：纯修饰键不绑定、F11 留给游戏、Esc 取消、Backspace/Delete 清除、中键和侧键可绑定、成功捕获清除重复绑定。恢复默认与全部恢复调用原生默认值，全部恢复还恢复 Alt+滚轮开关。离开页签或关闭菜单取消捕获，吞掉所认领按键的重复按下和释放，不让它继续触发页面。
+- 语言列表和名称从原生动态注册表取得，以稳定 locale code 提交，原生语言变化主动刷新菜单字典，无需重开。
+- 实验性知情说明沿用旧 UI 六段文字和按钮，取消不发送启用请求；确认由原生记录授权并开启指定模式，前端不先行授予授权。三个模式由原生互斥切换，未授权的模式启用会被后端拒绝。授权/半径/冷却持久化，模式是世界会话状态，单纯切模式不请求保存；退出世界关闭模式。模式勾选按原生应答回显。
+
+实验性说明弹窗与材料清单一样挂在菜单根节点，避开页面滚动视口的裁切；长文案区域可滚动，标题和操作按钮保持可见。
+
+请求 id、会话 context、字段原值和快捷键 revision 防止重复、旧应答和外部变更覆盖。未收到快照前禁用真实设置操作；页面切换保留输入，重新打开从原生恢复。preview/settings.ts 的模拟状态/默认值/DOM 捕获仅用于浏览器，不得进入正式构建。前端测试验证跨页、连续编辑、冲突、动态语言和界面设置无缩放占位控件；原生与实机要求见迁移说明。
+
+## 控件尺寸与设置页排版
+
+普通按钮、下拉触发器、选项及文本输入统一为 `2.2rem` 高、`1rem` 正文字号，加减按钮为同高方形。导航保留独立尺寸。设置页行距和分组间距由 `src/styles/menu.css` 统一维护，结构变换与渲染设置的下拉框使用一致最小宽度，不在业务 hooks 或页面事件中计算样式。保留原有按钮和即时同步行为；浏览器预览已检查 18/26 字号下渲染页的尺寸与横向边界，Gameface 效果仍由用户实测。
+
+## 导航视觉与动效（预览开发）
+
+导航采用纯文字并统一左对齐，不显示图标或保留图标占位。选中态采用 Windows 风格的左侧蓝色短竖条、无描边灰色底板与白色文字；竖条宽 `0.2rem`、高 `1.1rem`，在当前行垂直居中并带圆角。蓝条使用独立的绝对定位指示器，以 320ms 缓入缓出的位移动画滑向目标行；灰色背景在各行之间淡入淡出。指示器本身保持挂载，连续切换从当前动画位置接续；仅以页签为 key 的内部蓝条重播轻微拉伸、收拢动画，不重建移动容器，不维护计时器、旧页签或另一份选中状态。各行与指示器共用 `2.6rem` 高度、下间距 `0.3rem`，与 MenuNavigation 的 `2.9rem` 位移步长配套维护。导航外观与动效集中在 MenuNavigation / menu.css，LHoloButton 的可选 icon 槽继续供任务列表等其他控件使用。勾选状态沿用原蓝色，悬停/按下与键盘焦点分别反馈；右侧内容只在页签切换时淡入。`prefers-reduced-motion` 关闭位移与拉伸动效。
+
+导航项使用 `0.2rem` 小圆角，保证选中、悬停及焦点轮廓一致；左侧短竖条保持独立的 `0.1rem` 圆角。导航只消费当前页签并通过 onSelect 请求切换；动画与装饰不进入业务 hooks、平台桥接或原生协议。浏览器预览用于检查布局与动效，Gameface 的 transition/keyframes 表现及键盘焦点仍须实机验收。
+
+功能区使用共享 `.lholo-setting-row`：说明在左，控件从统一列起始；下拉框保留统一宽度，数字框使用短宽度，步进按钮组合靠左。内容填满右侧视口，页面标题、分组标题和辅助说明有独立字号/间距。窄窗口缩紧导航，并调整设置说明、坐标组和快捷键操作的换行方式。浏览器检查不能替代 Gameface 实机排版验收。
+
+HUD 页内的“投影信息 / 缺失材料 / 写入进度”共用一个持续挂载的下划线指示器，以 320ms 同步过渡位置与宽度，连续切换从当前位置衔接。几何测量仅由 HudPage 展示层持有，按实际页签边界适配不同文案宽度；页签、语言或窗口尺寸变化时更新，支持 ResizeObserver 的环境同时监听容器与三个页签的尺寸变化。测量后的单次帧刷新、窗口监听和观察器在换页或卸载时清理，不进入 HUD 业务 hook 或原生协议，不持续逐帧测量；`prefers-reduced-motion` 禁用过渡。Gameface 的实际布局和动效仍须实机验收。
+
+## 材料清单弹窗外观
+
+沿用主菜单中性黑灰表面、标题字号与共享关闭按钮。汇总使用辅助文字，三列维持物品/标识符/数量；标识符降低字号与亮度，数量固定窄列并右对齐，表头和行分隔线减弱。弹窗与主菜单共用同一条外框尺寸规则：宽度 `93vw`、最大 `62rem`，高度 `72vh`、最大 `35.2rem`；空状态也保持相同外框。表格填满标题和汇总下方的剩余高度，保留独立滚动与隐藏滚动条。材料清单支持按本地化名称或标识符搜索，以及原始顺序、名称、数量升降序排序。筛选仅改变显示，不修改原生统计、投影或放置；汇总始终显示完整材料。关闭或切换来源清空搜索。材料数据已接入原生快照。
+
+下拉框尺寸由共享 LHoloSelect 的 `size` 明确区分：旋转/镜像使用 compact（6rem），长选项使用 regular（11rem）；不按当前选中文字长度改变宽度，避免切换时跳动。
+
+## 原版物品图标测试通路
+
+材料行通过 `LHoloItemIcon → platform/native.NativeItemIcon → tools/oreui/runtime_adapter.js` 复用原版 fast-img、Facet 尺寸与 GeometryAtlas 物品缩略图通路。版本私有尺寸换算 `uc`、样式类和 `geo-item` 协议只存在于目标游戏适配器；页面不拼 URL，不访问原生物品注册表。原生 MaterialIconData 从只读物品提取渲染 PropertyBag，iconData:{id,bag} 经桥接和控件透传，适配器将 bag 编码为 URL 参数，并传递完整视觉属性的 tile id，区分相同物品 ID 下的旗帜类型、底色和图案。构建脚本继续校验原版 bundle SHA256，并校验图标组件签名。
+
+`MaterialItem.iconId` 是可选的显示身份（物品或方块），与业务层用于背包计数的 `MaterialRequirement.itemId` 分离。绑定层优先使用实际物品身份，无直接物品时使用方块身份供原版渲染；保留完整命名空间，仅在版本适配器中剥除原版前缀。水/岩浆沿用方块图标身份，不改变材料 HUD 的背包计数规则。
+
+打开材料清单通过 `lholo.materials.request` 请求原生统计，经 `lholo:materials` 下发 `{ready, items:[{displayName,nameKey,typeName,iconId,count}]}`。StructureUiState 提供同一锁内的版本、就绪状态和列表快照；绑定层仅在版本变化或强制同步时复制并序列化。未完成时显示计算提示，完成的空结果显示空列表提示。
+
+浏览器 preview/runtime 只渲染中性 SVG 占位，不请求游戏协议或复制游戏贴图。隔离测试覆盖等待/空结果、真实快照、完整 ID 透传与适配器转换。原版图标通路已由用户在当前游戏版本实测通过；本次职责整理仍需游戏内回归，尤其是液体图标与反复开关。
+
+主界面入口试验复用当前页面：投影快照 worldAvailable 由原生下发，未进入世界时禁用加载、恢复与辅助放置启用；创建页沿用 CaptureState.worldAvailable。浏览器“未进入世界”场景用于检查此布局和禁用状态，不代表游戏主界面路由实测。
+
+菜单使用标准 1.00 比例，不使用整体 transform 缩放，也不修改游戏根字号。容器宽度 93vw、最大 62rem，高度 72vh、最大高度 35.2rem。内容区随右侧视口填满，不再限制为 42rem；创建页坐标行弹性分配 XYZ 输入宽度。设置行共享标签列，选择框、数字输入和步进器从同一控制列起始；不拉伸数字输入。保持原有配色、控件和操作。
+
+创建页 XYZ 内层不换行，使用显式长度 flex-basis；只有外层位置按钮可换行，窄窗口时整体改为上下布局。避免 flex:1 隐含百分比基准与自动换行在 Gameface 中产生不同结果。依据：[Gameface 布局差异](https://docs.coherent-labs.com/unity-gameface/what_is_gfp/htmlfeaturesupport/)。浏览器预览仅检查界面，Gameface 排版仍须实机验收。
+
+HUD 布局编辑采用游戏原生 UIScene，浏览器只预览设置页入口，不模拟原生 HUD 编辑效果。
+
+快捷键页面复用原生 groupKey 元数据分为菜单、结构移动、分层显示、材料 HUD；组内短动作名不重复前缀。显示分组不改变 slot，所有绑定/重置/清除仍使用原生槽位 ID；Alt+滚轮开关放在移动组。正式前端不维护默认绑定或按键监听。
+
+## 写入世界入口
+
+按钮同时检查原生发布的玩家维度与文件绑定维度，不匹配或任一未定位时禁用；切换维度清除旧回执与临时开关。原生拒绝含未映射方块的文件写入并发布对应本地化结果，不把转换失败格当成空气。
+
+页面沿用共享控件的深色表面、圆角、尺寸、焦点与按压反馈；`lholo-write-world-page` 仅限定本页排版与字色。正文、文件名、说明、提示及控件统一使用现有主文字色 `#ededed`；本页提示等文字显式指定颜色，不依赖 `color:inherit` 覆盖共享提示色，两种模式使用相同字色与控件，不用整体透明度改变字色。模式下拉列表与触发框左对齐且外框等宽，使用 border-box 将边框和内边距计入宽度，选项单行显示；其他页面样式保持各自规则。
+
+写入结果提示属于当前页面实例，只显示本页面提交的请求结果；离页或关闭菜单即销毁。任务、选中文件、文件路径或世界上下文变化也会重建页面并清除提示，旧快照及迟到应答不恢复提示。请求等待和原生 busy 状态仍由菜单根部的 useStructureWrite 管理，切页不取消写入，也不解除重复提交限制。
+
+写入页将当前文件、模式与适用范围、选项、写入说明及操作各自分组，不再显示文件下方的重复摘要。模式行复用渲染设置页的 lholo-transform-row / lholo-setting-row 标签与控件列，保持下拉框宽度、对齐和窄屏换行一致，不单独覆盖列宽。说明文字沿用共享 lholo-muted 字号，空气处理说明与写入范围合并为一组，逐行显示在操作前，统一左对齐；指令范围用两行显示，模式与原生请求/状态逻辑保持独立。
+
+左侧导航按“渲染设置”→“创建结构”→“写入世界”排列，默认“结构方块”模式；可选择“指令”模式用于服务器。页面复用 LHoloSelect、LHoloButton 和 SelectedFileContext，经 useStructureWrite / structureWriteBridge 提交当前激活任务的选中文件 ID、任务 revision 与世界 revision，位置和内容由原生决定。两种模式均写入完整范围且不受分层显示影响；结构方块模式包含空气、液体和解析后保留的方块实体 NBT，指令模式仅写主层方块类型与状态；均不包含普通实体；浏览器预览不模拟世界修改。
+
+“跳过空气方块”为写入页局部布尔值，结构方块模式默认关闭、指令模式默认开启，复用 LHoloCheckbox，随单次写入请求发送 skipAir；忙碌时禁止修改，离页及上下文变化后恢复默认，不请求配置保存。开启时说明改为保留空气对应位置原有方块；非空气仍按完整结构写入。
+
+写入按钮下方以共享辅助字号、统一主文字色显示当前不可操作原因：未进入本地世界、加载中、未选任务、任务未加载、未选文件或文件隐藏，仅显示当前缺少的一项条件，不堆叠通用提示；满足条件后隐藏。执行中显示原生 busy，完成结果仍遵守页面回执生命周期。
+
+建造任务页的加载/关闭共用一个按钮，以原生 activeTaskId 和 loading 决定动作：选中任务未激活时加载，已激活或加载中时关闭；等待请求应答时禁用重复提交，原生加载期间收到应答后仍可关闭以取消，不依赖是否已有可渲染方块。材料清单保留独立入口。
+
+指令模式显示原生发布的写入文件名、已处理数量与当前阶段，不能把已发送数量当作完成量。原版明确返回无法放置方块时，仅跳过对应方块并继续，其数量通过 command.failedSkipped 单独发布；非零时页面与原生 HUD 显示共用语言键的跳过提示，不将其混同于成功放置。进行中的任务跨页面仍可查看和取消，临时开关在执行期间显示原生冻结的本次值，结束后恢复页面局部选择；暂停时可继续，语法错误有独立本地化原因，其他暂停原因复用原生状态；跳过不打印日志，日志只在实际进入暂停时记录一次。回执未知时原生先核对目标再决定重试。控制按钮只在等待本次应答时禁用，不因任务 busy 阻止取消；新写入与模式/空气开关在 busy 时锁定。新任务仅提交文件 ID、模式及 skipAir/skipPlaced，前端不推断模拟距离或独立维护执行队列。浏览器预览不发送游戏命令，权限、回执与世界变更由用户实机验证。
+
+“跳过已放置的投影方块”仅在指令模式显示，默认关闭，与空气开关一样只属于当前页面，不保存到配置。开启时原生在派发前跳过当前已加载、类型及状态均与投影一致的位置；前端不读取或推断世界方块。活动任务重新进入页面时显示原生快照的两个冻结选项；离页后新任务恢复指令模式空气开启、已放置跳过关闭的默认值。
+
+HUD 设置新增独立写入进度页签，复用 LHoloButton/LHoloCheckbox 和 useSettings 的 writeHudEnabled 字段通路。顶部居中的真实 HUD、文件、完成数/百分比和状态由现有原生 Painter 绘制，位置、缩放、透明度复用同一原生编辑器；前端不模拟 HUD 进度或维护完成倒计时。
+
+重新进入有指令任务正在执行的写入页时，将原生任务的模式及冻结选项接入当前页面草稿；任务取消或完成后保留本页的指令模式与选项，不退回结构方块模式。离开页面后的新实例仍按原默认规则初始化，不持久化这些选择。
+
+写入页在模式选择下方显示当前模式的适用范围：结构方块仅用于单人存档，指令适用于单人存档和服务器并要求管理员权限。说明随当前模式切换，沿用本页统一字色，不改变权限校验或写入流程。
+
+## Litematica-style workflow
+
+New installations open the menu with M. Existing saved bindings are respected. The main menu links to placements, placement transforms, materials, area capture, world writing and configuration. These are real native actions, not preview-only shortcuts.
+
+Layer settings support Y, X, material and Z. Existing serialized values retain their meanings; Z is appended as value 3 / task axis `z`. The native snapshot publishes four maxima in that same order. Rendering, correction, air ownership, inventory HUD and placement use the same local coordinate policy, before file rotation/mirroring.
+
+The material list supports translated-name/identifier search, name/quantity sorting, real inventory availability, a gather filter and stack-size-aware counts. Availability uses the native item/NBT matcher, updates without rescanning the structure, and rejects stale revisions. Unknown inventory forms are shown as unavailable data, not fabricated inventory counts. The gather filter compares the list requirement with inventory; it does not claim to subtract already built blocks.
+
+The active entry is now the source-based Litematica screen port in LHoloMenu.tsx, SchematicPages.tsx and JavaAreaEditor.tsx. The old task sidebar and experimental pages are not mounted. See DEVELOPMENT.md for implemented behavior and outstanding parity. `npm test` verifies the new source/placement/browser actions and adapter contracts.
